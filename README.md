@@ -1,24 +1,32 @@
-# crabwalk
+# 🦀 Crabwalk
 
-A full-stack React application built with [TanStack Start](https://tanstack.com/start).
+Real-time companion monitor for [Clawdbot](https://github.com/anthropics/clawdbot) agents.
+
+Watch your AI agents work across WhatsApp, Telegram, Discord, and Slack in a live node graph. See thinking states, tool calls, and response chains as they happen.
+
+## Features
+
+- **Live activity graph** - ReactFlow visualization of agent sessions and action chains
+- **Multi-platform** - Monitor agents across all messaging platforms simultaneously
+- **Real-time streaming** - WebSocket connection to clawdbot gateway
+- **Action tracing** - Expand nodes to inspect tool args and payloads
+- **Session filtering** - Filter by platform, search by recipient
 
 ## Getting Started
 
 ```bash
-# Install dependencies
 npm install
-
-# Start development server
 npm run dev
 ```
 
-## Scripts
+Open `http://localhost:3000/monitor`
 
-- `dev` - Start development server
-- `build` - Build for production
-- `start` - Start production server
+Requires clawdbot gateway running on `ws://127.0.0.1:18789`.
 
-## Learn More
+## Config
 
-- [TanStack Start Documentation](https://tanstack.com/start)
-- [TanStack Router Documentation](https://tanstack.com/router)
+Set `CLAWDBOT_API_TOKEN` env var for gateway authentication.
+
+## Stack
+
+TanStack Start, ReactFlow, Framer Motion, tRPC, TanStack DB
