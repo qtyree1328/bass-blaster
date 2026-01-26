@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { Database, Home, Menu, X, Zap } from 'lucide-react'
+import { Activity, Home, Menu, X } from 'lucide-react'
 
 export function Header() {
   const [isOpen, setIsOpen] = useState(false)
@@ -15,15 +15,10 @@ export function Header() {
         >
           <Menu size={24} />
         </button>
-        <h1 className="ml-4 text-xl font-semibold">
-          <Link to="/">
-            <img
-              src="/tanstack-logo-light.svg"
-              alt="TanStack Logo"
-              className="h-10"
-            />
-          </Link>
-        </h1>
+        <Link to="/" className="ml-4 flex items-center gap-2">
+          <span className="text-2xl">🦀</span>
+          <span className="text-xl font-semibold">Crabwalk</span>
+        </Link>
       </header>
 
       <aside
@@ -56,39 +51,15 @@ export function Header() {
           </Link>
 
           <Link
-            to="/demo/query"
+            to="/monitor"
             onClick={() => setIsOpen(false)}
             className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-800 transition-colors mb-2"
             activeProps={{
               className: 'flex items-center gap-3 p-3 rounded-lg bg-cyan-600 hover:bg-cyan-700 transition-colors mb-2',
             }}
           >
-            <Database size={20} />
-            <span className="font-medium">TanStack Query</span>
-          </Link>
-
-          <Link
-            to="/demo/db"
-            onClick={() => setIsOpen(false)}
-            className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-800 transition-colors mb-2"
-            activeProps={{
-              className: 'flex items-center gap-3 p-3 rounded-lg bg-cyan-600 hover:bg-cyan-700 transition-colors mb-2',
-            }}
-          >
-            <Database size={20} />
-            <span className="font-medium">TanStack DB</span>
-          </Link>
-
-          <Link
-            to="/demo/trpc"
-            onClick={() => setIsOpen(false)}
-            className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-800 transition-colors mb-2"
-            activeProps={{
-              className: 'flex items-center gap-3 p-3 rounded-lg bg-cyan-600 hover:bg-cyan-700 transition-colors mb-2',
-            }}
-          >
-            <Zap size={20} />
-            <span className="font-medium">tRPC</span>
+            <Activity size={20} />
+            <span className="font-medium">Monitor</span>
           </Link>
         </nav>
       </aside>
