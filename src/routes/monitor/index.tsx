@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { useLiveQuery, createTransaction } from '@tanstack/react-db'
+import { useLiveQuery } from '@tanstack/react-db'
 import { Activity, ArrowLeft, Loader2 } from 'lucide-react'
 import { trpc } from '~/integrations/trpc/client'
 import {
@@ -103,16 +103,11 @@ function MonitorPage() {
       )
       console.log('[monitor] loadSessions result:', result.sessions?.length, result.error)
       if (result.sessions && result.sessions.length > 0) {
-        console.log('[monitor] First session:', result.sessions[0])
-        const tx = createTransaction({ mutationFn: async () => {} })
-        tx.mutate(() => {
-          for (const session of result.sessions) {
-            console.log('[monitor] upserting session:', session.key)
-            upsertSession(session)
-          }
-        })
-        await tx.commit()
-        console.log('[monitor] Transaction committed')
+        for (const session of result.sessions) {
+          console.log('[monitor] upserting session:', session.key)
+          upsertSession(session)
+        }
+        console.log('[monitor] Sessions upserted')
       }
     } catch (e) {
       console.error('Failed to load sessions:', e)
