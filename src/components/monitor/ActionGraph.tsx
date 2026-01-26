@@ -114,20 +114,28 @@ export function ActionGraph({
       runActions.set(action.runId, run)
     }
 
+    // Build set of session node IDs for validation
+    const sessionNodeIds = new Set(visibleSessions.map((s) => `session-${s.key}`))
+
     // Connect session to first action of each run
     for (const [runId, runActs] of runActions) {
       const sorted = [...runActs].sort((a, b) => a.seq - b.seq)
       const first = sorted[0]
       if (first) {
         const sessionId = `session-${first.sessionKey}`
-        edges.push({
-          id: `e-session-${runId}`,
-          source: sessionId,
-          target: `action-${first.id}`,
-          animated: first.type === 'delta',
-          markerEnd: { type: MarkerType.ArrowClosed },
-          style: { stroke: '#6b7280' },
-        })
+        // Only create edge if session node exists
+        if (sessionNodeIds.has(sessionId)) {
+          edges.push({
+            id: `e-session-${runId}`,
+            source: sessionId,
+            target: `action-${first.id}`,
+            animated: first.type === 'delta',
+            markerEnd: { type: MarkerType.ArrowClosed },
+            style: { stroke: '#6b7280' },
+          })
+        } else {
+          console.log('[graph] session not found for action:', first.sessionKey, 'available:', [...sessionNodeIds])
+        }
 
         // Connect actions in sequence
         for (let i = 1; i < sorted.length; i++) {
