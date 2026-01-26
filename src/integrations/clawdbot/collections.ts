@@ -1,6 +1,9 @@
 import { createCollection, localOnlyCollectionOptions } from '@tanstack/db'
 import type { MonitorSession, MonitorAction } from './protocol'
 
+// Track runId → sessionKey mapping (learned from chat events)
+const runSessionMap = new Map<string, string>()
+
 export const sessionsCollection = createCollection(
   localOnlyCollectionOptions<MonitorSession>({
     id: 'clawdbot-sessions',
@@ -30,22 +33,37 @@ export function upsertSession(session: MonitorSession) {
 // Helper to add or update action
 // For deltas, we aggregate into a single "streaming" action per runId
 export function addAction(action: MonitorAction) {
+  // Learn runId → sessionKey mapping from actions with real session keys
+  if (action.sessionKey && !action.sessionKey.includes('lifecycle')) {
+    runSessionMap.set(action.runId, action.sessionKey)
+  }
+
+  // Resolve sessionKey: use mapped value if action has lifecycle/invalid key
+  let sessionKey = action.sessionKey
+  if (!sessionKey || sessionKey === 'lifecycle') {
+    sessionKey = runSessionMap.get(action.runId) || sessionKey
+  }
+
   // For deltas, use runId as the key (aggregate all deltas)
   if (action.type === 'delta') {
     const streamingId = `${action.runId}-stream`
     const existing = actionsCollection.state.get(streamingId)
     if (existing) {
-      // Append content to existing streaming action
+      // Append content and update sessionKey if we learned it
       actionsCollection.update(streamingId, (draft) => {
         draft.content = (draft.content || '') + (action.content || '')
         draft.seq = action.seq
         draft.timestamp = action.timestamp
+        if (sessionKey && sessionKey !== 'lifecycle') {
+          draft.sessionKey = sessionKey
+        }
       })
     } else {
       // Create new streaming action
       actionsCollection.insert({
         ...action,
         id: streamingId,
+        sessionKey,
       })
     }
     return
@@ -60,6 +78,9 @@ export function addAction(action: MonitorAction) {
         draft.type = action.type
         draft.seq = action.seq
         draft.timestamp = action.timestamp
+        if (sessionKey && sessionKey !== 'lifecycle') {
+          draft.sessionKey = sessionKey
+        }
       })
       return
     }
@@ -69,7 +90,7 @@ export function addAction(action: MonitorAction) {
   // For tool_call/tool_result or orphaned finals, add as new
   const existing = actionsCollection.state.get(action.id)
   if (!existing) {
-    actionsCollection.insert(action)
+    actionsCollection.insert({ ...action, sessionKey })
   }
 }
 

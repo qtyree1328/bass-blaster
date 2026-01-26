@@ -128,10 +128,6 @@ export function parseEventFrame(
 
   if (frame.event === 'agent' && frame.payload) {
     const agentEvent = frame.payload as AgentEvent
-    // Skip lifecycle/internal events that don't belong to a session
-    if (!agentEvent.stream || agentEvent.stream === 'lifecycle') {
-      return null
-    }
     return {
       action: agentEventToAction(agentEvent),
     }
