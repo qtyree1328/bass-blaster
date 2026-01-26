@@ -1,6 +1,7 @@
+import { useState, useCallback } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { motion } from 'framer-motion'
-import { CrabIdleAnimation } from '~/components/ani'
+import { CrabIdleAnimation, CrabJumpAnimation, CrabAttackAnimation } from '~/components/ani'
 
 export const Route = createFileRoute('/')({
   component: Home,
@@ -29,7 +30,34 @@ function CrabSilhouette({ className }: { className?: string }) {
   )
 }
 
+type CrabState = 'idle' | 'jumping' | 'attacking'
+
 function Home() {
+  const [crabState, setCrabState] = useState<CrabState>('idle')
+  const [isHovering, setIsHovering] = useState(false)
+
+  const handleMouseEnter = useCallback(() => {
+    setIsHovering(true)
+    if (crabState !== 'attacking') {
+      setCrabState('jumping')
+    }
+  }, [crabState])
+
+  const handleMouseLeave = useCallback(() => {
+    setIsHovering(false)
+    if (crabState !== 'attacking') {
+      setCrabState('idle')
+    }
+  }, [crabState])
+
+  const handleClick = useCallback(() => {
+    setCrabState('attacking')
+    // Attack animation: 4 frames at 10fps = 400ms
+    setTimeout(() => {
+      setCrabState(isHovering ? 'jumping' : 'idle')
+    }, 400)
+  }, [isHovering])
+
   return (
     <div className="min-h-[calc(100vh-72px)] bg-shell-950 texture-grid relative overflow-hidden">
       {/* Decorative background elements */}
@@ -44,16 +72,23 @@ function Home() {
       {/* Main content */}
       <div className="relative flex items-center justify-center min-h-[calc(100vh-72px)] px-4">
         <div className="text-center max-w-2xl">
-          {/* Animated crab with glow */}
+          {/* Interactive animated crab with glow */}
           <motion.div
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.5, ease: 'easeOut' }}
             className="mb-8"
           >
-            <div className="relative inline-block">
+            <div
+              className="relative inline-block cursor-pointer select-none"
+              onMouseEnter={handleMouseEnter}
+              onMouseLeave={handleMouseLeave}
+              onClick={handleClick}
+            >
               <div className="crab-icon-glow">
-                <CrabIdleAnimation className="w-32 h-32" />
+                {crabState === 'idle' && <CrabIdleAnimation className="w-32 h-32" />}
+                {crabState === 'jumping' && <CrabJumpAnimation className="w-32 h-32" />}
+                {crabState === 'attacking' && <CrabAttackAnimation className="w-32 h-32" />}
               </div>
               <motion.div
                 className="absolute inset-0 flex items-center justify-center -z-10"
