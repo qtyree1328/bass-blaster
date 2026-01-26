@@ -107,16 +107,21 @@ export class ClawdbotClient {
       return
     }
 
-    // Per docs: echo nonce in device, auth contains token
+    // Per docs: wrap as request frame with method "connect"
     const params = createConnectParams(this.token)
-    const response = {
-      ...params,
-      device: {
-        nonce: challenge.nonce,
+    const response: RequestFrame = {
+      type: 'req',
+      id: `connect-${Date.now()}`,
+      method: 'connect',
+      params: {
+        ...params,
+        device: {
+          nonce: challenge.nonce,
+        },
       },
     }
 
-    console.log('[clawdbot] Sending challenge response:', JSON.stringify(response).slice(0, 300))
+    console.log('[clawdbot] Sending challenge response:', JSON.stringify(response).slice(0, 400))
     this.ws.send(JSON.stringify(response))
   }
 
