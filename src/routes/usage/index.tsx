@@ -5,22 +5,32 @@ export const Route = createFileRoute('/usage/')({
   component: UsagePage,
 })
 
-// Cost estimates (Claude pricing)
-const COST_PER_1M_INPUT = 3 // $3 per 1M input
-const COST_PER_1M_OUTPUT = 15 // $15 per 1M output
+interface SessionUsage {
+  sessionId: string
+  input: number
+  output: number
+  cacheRead: number
+  cacheWrite: number
+  cost: number
+  messageCount: number
+  lastActivity: string
+}
 
 interface UsageData {
   totalInput: number
   totalOutput: number
+  totalCacheRead: number
+  totalCacheWrite: number
   totalCost: number
   sessions: SessionUsage[]
-}
-
-interface SessionUsage {
-  key: string
-  channel: string
-  input: number
-  output: number
+  lastUpdated: string
+  currentSession?: {
+    sessionId: string
+    contextUsed: number
+    contextMax: number
+    input: number
+    output: number
+  }
 }
 
 function UsagePage() {
@@ -29,6 +39,7 @@ function UsagePage() {
   const [timeRange, setTimeRange] = useState<'1h' | '24h' | '7d' | 'all'>('24h')
 
   useEffect(() => {
+    setLoading(true)
     fetch(`/api/usage?range=${timeRange}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
@@ -38,104 +49,290 @@ function UsagePage() {
       .catch(() => setLoading(false))
   }, [timeRange])
 
+  // Auto-refresh every minute
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetch(`/api/usage?range=${timeRange}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(data => setUsage(data))
+        .catch(() => {})
+    }, 60000)
+    return () => clearInterval(interval)
+  }, [timeRange])
+
   const formatTokens = (n: number) => {
     if (n >= 1000000) return (n / 1000000).toFixed(2) + 'M'
     if (n >= 1000) return (n / 1000).toFixed(1) + 'K'
     return n.toString()
   }
 
+  const formatCost = (n: number) => {
+    if (n < 0.01) return '<$0.01'
+    return '$' + n.toFixed(2)
+  }
+
+  const formatTime = (ts: string) => {
+    try {
+      const date = new Date(ts)
+      const now = new Date()
+      const diff = now.getTime() - date.getTime()
+      
+      if (diff < 60000) return 'just now'
+      if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
+      if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
+      return date.toLocaleDateString()
+    } catch {
+      return ''
+    }
+  }
+
+  const totalTokens = (usage?.totalInput || 0) + (usage?.totalOutput || 0)
+  const cacheTotal = (usage?.totalCacheRead || 0) + (usage?.totalCacheWrite || 0)
+
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100">
-      <header className="border-b border-gray-800 px-6 py-4">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <h1 className="text-xl font-semibold">Usage</h1>
-          <Link to="/" className="text-sm text-gray-400 hover:text-white">← Hub</Link>
+    <div className="min-h-screen bg-slate-50">
+      <header className="bg-white border-b border-slate-200 px-6 py-4 sticky top-0 z-10">
+        <div className="max-w-5xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">📈</span>
+            <div>
+              <h1 className="text-xl font-semibold text-slate-900">Usage</h1>
+              <p className="text-xs text-slate-500">Token & cost analytics</p>
+            </div>
+          </div>
+          <Link to="/" className="text-sm text-slate-500 hover:text-slate-700 flex items-center gap-1">
+            ← Back to Hub
+          </Link>
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-6 py-8">
-        {/* Time Range */}
-        <div className="flex gap-2 mb-6">
-          {(['1h', '24h', '7d', 'all'] as const).map(range => (
-            <button
-              key={range}
-              onClick={() => setTimeRange(range)}
-              className={`px-3 py-1.5 text-sm rounded ${
-                timeRange === range
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-              }`}
-            >
-              {range}
-            </button>
-          ))}
+      <main className="max-w-5xl mx-auto px-6 py-8">
+        {/* Time Range Selector */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex gap-2">
+            {(['1h', '24h', '7d', 'all'] as const).map(range => (
+              <button
+                key={range}
+                onClick={() => setTimeRange(range)}
+                className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
+                  timeRange === range
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white text-slate-600 border border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                {range === '1h' ? '1 Hour' : range === '24h' ? '24 Hours' : range === '7d' ? '7 Days' : 'All Time'}
+              </button>
+            ))}
+          </div>
+          {usage?.lastUpdated && (
+            <span className="text-xs text-slate-400">
+              Updated {formatTime(usage.lastUpdated)}
+            </span>
+          )}
         </div>
 
         {loading ? (
-          <p className="text-gray-500">Loading...</p>
+          <div className="text-center py-12 text-slate-500">Loading usage data...</div>
         ) : usage ? (
           <div className="space-y-6">
-            {/* Stats Grid */}
-            <div className="grid grid-cols-3 gap-4">
-              <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-                <p className="text-xs text-gray-500 mb-1">Total Tokens</p>
-                <p className="text-2xl font-semibold text-white">
-                  {formatTokens(usage.totalInput + usage.totalOutput)}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  {formatTokens(usage.totalInput)} in / {formatTokens(usage.totalOutput)} out
-                </p>
+            {/* Context Window - Current Session */}
+            {usage.currentSession && (
+              <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-xl p-5 mb-6">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-indigo-900">🧠 Current Context Window</h3>
+                  <span className="text-xs text-indigo-600 font-mono">
+                    {formatTokens(usage.currentSession.contextUsed)} / {formatTokens(usage.currentSession.contextMax)}
+                  </span>
+                </div>
+                
+                {/* Full context window bar */}
+                <div className="h-6 rounded-full overflow-hidden bg-slate-200 flex relative">
+                  {/* Input portion */}
+                  <div 
+                    className="bg-blue-500 transition-all relative z-10" 
+                    style={{ width: `${(usage.currentSession.input / usage.currentSession.contextMax) * 100}%` }}
+                  />
+                  {/* Output portion */}
+                  <div 
+                    className="bg-orange-500 transition-all relative z-10" 
+                    style={{ width: `${(usage.currentSession.output / usage.currentSession.contextMax) * 100}%` }}
+                  />
+                  {/* Remaining space is the grey background */}
+                </div>
+                
+                <div className="flex justify-between mt-2 text-xs">
+                  <div className="flex items-center gap-4">
+                    <span className="flex items-center gap-1 text-blue-700">
+                      <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                      Input: {formatTokens(usage.currentSession.input)}
+                    </span>
+                    <span className="flex items-center gap-1 text-orange-700">
+                      <span className="w-2 h-2 rounded-full bg-orange-500"></span>
+                      Output: {formatTokens(usage.currentSession.output)}
+                    </span>
+                    <span className="flex items-center gap-1 text-slate-500">
+                      <span className="w-2 h-2 rounded-full bg-slate-300"></span>
+                      Available: {formatTokens(usage.currentSession.contextMax - usage.currentSession.contextUsed)}
+                    </span>
+                  </div>
+                  <span className="text-indigo-600 font-semibold">
+                    {((usage.currentSession.contextUsed / usage.currentSession.contextMax) * 100).toFixed(1)}% used
+                  </span>
+                </div>
+                
+                {/* Warning if getting close to limit */}
+                {usage.currentSession.contextUsed > usage.currentSession.contextMax * 0.8 && (
+                  <div className="mt-3 text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
+                    ⚠️ Context window is {((usage.currentSession.contextUsed / usage.currentSession.contextMax) * 100).toFixed(0)}% full. 
+                    Consider running /new to start a fresh session.
+                  </div>
+                )}
               </div>
-              <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-                <p className="text-xs text-gray-500 mb-1">Est. Cost</p>
-                <p className="text-2xl font-semibold text-green-400">
-                  ${usage.totalCost.toFixed(4)}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">Based on API pricing</p>
-              </div>
-              <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-                <p className="text-xs text-gray-500 mb-1">Sessions</p>
-                <p className="text-2xl font-semibold text-blue-400">
-                  {usage.sessions.length}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">Active in period</p>
+            )}
+
+            {/* Explainer */}
+            <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-6">
+              <h3 className="text-sm font-medium text-blue-900 mb-2">📊 What do these numbers mean?</h3>
+              <div className="text-sm text-blue-800 space-y-1">
+                <p><strong>Context Window</strong> = Claude Opus has 200K tokens max. This shows how much of that is used in the current session.</p>
+                <p><strong>Input tokens</strong> = what you send me (your messages, files, context)</p>
+                <p><strong>Output tokens</strong> = what I generate (my responses, code, tool calls)</p>
               </div>
             </div>
 
-            {/* Sessions */}
-            <div>
-              <h2 className="text-sm font-medium text-gray-400 mb-3">Usage by Session</h2>
+            {/* Stats Grid */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <StatCard 
+                label="Total Tokens" 
+                value={formatTokens(totalTokens)}
+                subtext={`${formatTokens(usage.totalInput)} in / ${formatTokens(usage.totalOutput)} out`}
+                tooltip="Combined input + output tokens processed"
+                color="blue"
+              />
+              <StatCard 
+                label="Est. Cost" 
+                value={formatCost(usage.totalCost)}
+                subtext="Based on API pricing"
+                tooltip="What this would cost on pay-per-token API (you have Claude Max, so it's flat rate)"
+                color="green"
+              />
+              <StatCard 
+                label="Cache Tokens" 
+                value={formatTokens(cacheTotal)}
+                subtext={`${formatTokens(usage.totalCacheRead)} read / ${formatTokens(usage.totalCacheWrite)} write`}
+                tooltip="Tokens saved by caching repeated context (system prompts, files)"
+                color="purple"
+              />
+              <StatCard 
+                label="Sessions" 
+                value={usage.sessions.length.toString()}
+                subtext="Active in period"
+                tooltip="Separate conversations (Telegram, web, cron jobs, etc.)"
+                color="amber"
+              />
+            </div>
+
+            {/* Token Breakdown Bar - Period Totals */}
+            {totalTokens > 0 && (
+              <div className="bg-white rounded-xl border border-slate-200 p-5">
+                <h3 className="text-sm font-medium text-slate-700 mb-1">Period Token Breakdown</h3>
+                <p className="text-xs text-slate-400 mb-3">Total tokens across all sessions in selected time range</p>
+                <div className="h-4 rounded-full overflow-hidden bg-slate-100 flex">
+                  <div 
+                    className="bg-blue-500 transition-all" 
+                    style={{ width: `${(usage.totalInput / totalTokens) * 100}%` }}
+                    title={`Input: ${formatTokens(usage.totalInput)}`}
+                  />
+                  <div 
+                    className="bg-orange-500 transition-all" 
+                    style={{ width: `${(usage.totalOutput / totalTokens) * 100}%` }}
+                    title={`Output: ${formatTokens(usage.totalOutput)}`}
+                  />
+                </div>
+                <div className="flex justify-between mt-2 text-xs text-slate-500">
+                  <span className="flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                    Input ({((usage.totalInput / totalTokens) * 100).toFixed(0)}%)
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-orange-500"></span>
+                    Output ({((usage.totalOutput / totalTokens) * 100).toFixed(0)}%)
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Sessions List */}
+            <div className="bg-white rounded-xl border border-slate-200 p-5">
+              <h3 className="text-sm font-medium text-slate-700 mb-4">Usage by Session</h3>
               {usage.sessions.length > 0 ? (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {usage.sessions.map((s, i) => (
-                    <div key={i} className="bg-gray-900 border border-gray-800 rounded-lg p-3">
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm text-gray-300">{s.key}</span>
-                        <span className="text-xs text-gray-500">{s.channel}</span>
+                    <div key={i} className="p-3 rounded-lg bg-slate-50 border border-slate-100">
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <span className="text-sm font-mono text-slate-700 truncate block max-w-xs">
+                            {s.sessionId.slice(0, 8)}...
+                          </span>
+                          <span className="text-xs text-slate-400">{s.messageCount} messages</span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-sm font-medium text-slate-900">{formatTokens(s.input + s.output)}</span>
+                          <span className="text-xs text-slate-400 block">{formatTime(s.lastActivity)}</span>
+                        </div>
                       </div>
-                      <div className="flex h-2 rounded-full overflow-hidden bg-gray-800">
-                        <div className="bg-green-500" style={{ width: `${(s.input / (s.input + s.output)) * 100}%` }} />
-                        <div className="bg-orange-500" style={{ width: `${(s.output / (s.input + s.output)) * 100}%` }} />
+                      <div className="flex h-2 rounded-full overflow-hidden bg-slate-200">
+                        <div 
+                          className="bg-blue-400" 
+                          style={{ width: `${(s.input / (s.input + s.output)) * 100}%` }} 
+                        />
+                        <div 
+                          className="bg-orange-400" 
+                          style={{ width: `${(s.output / (s.input + s.output)) * 100}%` }} 
+                        />
                       </div>
-                      <div className="flex justify-between mt-1 text-xs text-gray-500">
+                      <div className="flex justify-between mt-1.5 text-xs text-slate-500">
                         <span>In: {formatTokens(s.input)}</span>
                         <span>Out: {formatTokens(s.output)}</span>
+                        <span className="text-green-600">{formatCost(s.cost)}</span>
                       </div>
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="text-gray-600 text-sm">No usage data for this period</p>
+                <p className="text-slate-400 text-sm text-center py-4">No usage data for this period</p>
               )}
             </div>
           </div>
         ) : (
-          <div className="text-center py-12">
-            <p className="text-gray-500">No usage data available</p>
-            <p className="text-sm text-gray-600 mt-2">Usage tracking requires gateway connection</p>
+          <div className="text-center py-12 bg-white rounded-xl border border-slate-200">
+            <p className="text-slate-500">No usage data available</p>
+            <p className="text-sm text-slate-400 mt-2">Session data will appear after AI interactions</p>
           </div>
         )}
       </main>
+    </div>
+  )
+}
+
+function StatCard({ label, value, subtext, tooltip, color }: { 
+  label: string; value: string; subtext: string; tooltip?: string; color: 'blue' | 'green' | 'purple' | 'amber' 
+}) {
+  const colors = {
+    blue: 'bg-blue-50 border-blue-100 text-blue-600',
+    green: 'bg-emerald-50 border-emerald-100 text-emerald-600',
+    purple: 'bg-purple-50 border-purple-100 text-purple-600',
+    amber: 'bg-amber-50 border-amber-100 text-amber-600',
+  }
+  
+  return (
+    <div className={`rounded-xl border p-4 ${colors[color]} relative group`} title={tooltip}>
+      <p className="text-xs font-medium opacity-70 mb-1 flex items-center gap-1">
+        {label}
+        {tooltip && <span className="text-[10px] opacity-50 cursor-help">ⓘ</span>}
+      </p>
+      <p className="text-2xl font-bold">{value}</p>
+      <p className="text-xs opacity-60 mt-1">{subtext}</p>
     </div>
   )
 }
