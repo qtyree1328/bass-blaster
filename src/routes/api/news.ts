@@ -11,11 +11,13 @@ interface NewsItem {
   source: string
   url: string
   summary: string
-  category: 'industry' | 'papers' | 'conservation' | 'tools' | 'datasets'
+  category: 'industry' | 'research' | 'conservation' | 'tools' | 'datasets'
   tags: string[]
   addedAt: string
   read: boolean
   starred: boolean
+  saved: boolean
+  notes?: string
 }
 
 interface NewsData {
@@ -28,7 +30,11 @@ async function loadNews(): Promise<NewsItem[]> {
     if (existsSync(NEWS_PATH)) {
       const data = await readFile(NEWS_PATH, 'utf-8')
       const parsed = JSON.parse(data)
-      return parsed.items || []
+      return (parsed.items || []).map((item: any) => ({
+        ...item,
+        saved: item.saved ?? false,
+        notes: item.notes ?? ''
+      }))
     }
   } catch {}
   return []
@@ -48,20 +54,24 @@ async function handleGet({ request }: { request: Request }) {
   const category = url.searchParams.get('category')
   const unreadOnly = url.searchParams.get('unread') === 'true'
   const starred = url.searchParams.get('starred') === 'true'
+  const savedOnly = url.searchParams.get('saved') === 'true'
   
   let items = await loadNews()
   
   if (category) items = items.filter(i => i.category === category)
   if (unreadOnly) items = items.filter(i => !i.read)
   if (starred) items = items.filter(i => i.starred)
+  if (savedOnly) items = items.filter(i => i.saved)
   
   // Sort by date, newest first
   items.sort((a, b) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime())
   
+  const allItems = await loadNews()
   const stats = {
-    total: (await loadNews()).length,
-    unread: (await loadNews()).filter(i => !i.read).length,
-    starred: (await loadNews()).filter(i => i.starred).length,
+    total: allItems.length,
+    unread: allItems.filter(i => !i.read).length,
+    starred: allItems.filter(i => i.starred).length,
+    saved: allItems.filter(i => i.saved).length,
   }
   
   return Response.json({ items, stats })
@@ -85,8 +95,10 @@ async function handlePost({ request }: { request: Request }) {
       addedAt: new Date().toISOString(),
       read: false,
       starred: false,
+      saved: false,
+      notes: ''
     }
-    items.push(newItem)
+    items.unshift(newItem)
     await saveNews(items)
     return Response.json({ ok: true, item: newItem })
   }
@@ -112,6 +124,34 @@ async function handlePost({ request }: { request: Request }) {
       items[idx].starred = !items[idx].starred
       await saveNews(items)
       return Response.json({ ok: true, starred: items[idx].starred })
+    }
+  }
+  
+  if (action === 'save' && id) {
+    const idx = items.findIndex(i => i.id === id)
+    if (idx !== -1) {
+      items[idx].saved = true
+      items[idx].read = true
+      await saveNews(items)
+      return Response.json({ ok: true })
+    }
+  }
+  
+  if (action === 'unsave' && id) {
+    const idx = items.findIndex(i => i.id === id)
+    if (idx !== -1) {
+      items[idx].saved = false
+      await saveNews(items)
+      return Response.json({ ok: true })
+    }
+  }
+  
+  if (action === 'updateNotes' && id) {
+    const idx = items.findIndex(i => i.id === id)
+    if (idx !== -1) {
+      items[idx].notes = payload.notes || ''
+      await saveNews(items)
+      return Response.json({ ok: true })
     }
   }
   

@@ -1,150 +1,157 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { readFile, writeFile, mkdir } from 'fs/promises'
+import { readFile, writeFile, mkdir, appendFile } from 'fs/promises'
 import { existsSync } from 'fs'
 import path from 'path'
 
-const TRENDS_PATH = path.join(process.env.HOME || '', '.clawdbot/trends.json')
+const HOME = process.env.HOME || ''
+const TRENDS_PATH = path.join(HOME, '.clawdbot/trends.json')
+const MEMORY_PATH = path.join(HOME, 'clawd/memory/trends-notes.md')
 
 interface TrendItem {
   id: string
-  type: 'skill' | 'tool' | 'topic' | 'gap'
+  type: 'market' | 'skill'
   title: string
   description: string
   relevance: 'high' | 'medium' | 'low'
   source?: string
-  mentions?: number
   addedAt: string
   updatedAt: string
-}
-
-interface SkillGap {
-  id: string
-  skill: string
-  demandLevel: 'high' | 'medium' | 'low'
-  currentLevel: 'none' | 'basic' | 'intermediate' | 'advanced'
-  priority: number
-  notes: string
-  resources: string[]
-  addedAt: string
+  saved: boolean
+  notes?: string
 }
 
 interface TrendsData {
   version: number
   trends: TrendItem[]
-  skillGaps: SkillGap[]
-  lastAnalysis: string | null
 }
 
-async function loadTrends(): Promise<TrendsData> {
+async function loadTrends(): Promise<TrendItem[]> {
   try {
     if (existsSync(TRENDS_PATH)) {
       const data = await readFile(TRENDS_PATH, 'utf-8')
-      return JSON.parse(data)
+      const parsed = JSON.parse(data)
+      return (parsed.trends || []).map((item: any) => ({
+        ...item,
+        saved: item.saved ?? false,
+        notes: item.notes ?? ''
+      }))
     }
   } catch {}
-  return { version: 1, trends: [], skillGaps: [], lastAnalysis: null }
+  return []
 }
 
-async function saveTrends(data: TrendsData): Promise<void> {
+async function saveTrends(trends: TrendItem[]): Promise<void> {
   const dir = path.dirname(TRENDS_PATH)
   if (!existsSync(dir)) {
     await mkdir(dir, { recursive: true })
   }
+  const data: TrendsData = { version: 1, trends }
   await writeFile(TRENDS_PATH, JSON.stringify(data, null, 2))
 }
 
+// Write to memory file when user saves a trend with notes
+async function writeToMemory(trend: TrendItem): Promise<void> {
+  const memDir = path.dirname(MEMORY_PATH)
+  if (!existsSync(memDir)) {
+    await mkdir(memDir, { recursive: true })
+  }
+  
+  const date = new Date().toISOString().split('T')[0]
+  const entry = `
+## ${date} - ${trend.title}
+
+**Type:** ${trend.type === 'market' ? 'Market Trend' : 'Skill Gap'}
+**Relevance:** ${trend.relevance}
+**Source:** ${trend.source || 'Unknown'}
+
+${trend.description}
+
+**My Notes:**
+${trend.notes || 'No notes'}
+
+---
+`
+  
+  await appendFile(MEMORY_PATH, entry)
+}
+
 async function handleGet() {
-  const data = await loadTrends()
+  const trends = await loadTrends()
   
-  // Sort trends by relevance
-  const relevanceOrder = { high: 0, medium: 1, low: 2 }
-  data.trends.sort((a, b) => relevanceOrder[a.relevance] - relevanceOrder[b.relevance])
+  // Sort by date, newest first
+  trends.sort((a, b) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime())
   
-  // Sort skill gaps by priority
-  data.skillGaps.sort((a, b) => b.priority - a.priority)
-  
-  return Response.json(data)
+  return Response.json({ trends })
 }
 
 async function handlePost({ request }: { request: Request }) {
   const body = await request.json()
   const { action, id, ...payload } = body
   
-  const data = await loadTrends()
+  let trends = await loadTrends()
   
-  // Add trend
-  if (action === 'addTrend') {
+  if (action === 'add') {
     const newTrend: TrendItem = {
       id: `trend-${Date.now()}`,
-      type: payload.type || 'topic',
+      type: payload.type || 'market',
       title: payload.title || 'Untitled',
       description: payload.description || '',
       relevance: payload.relevance || 'medium',
       source: payload.source,
-      mentions: payload.mentions,
       addedAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      saved: false,
+      notes: ''
     }
-    data.trends.push(newTrend)
-    await saveTrends(data)
+    trends.unshift(newTrend)
+    await saveTrends(trends)
     return Response.json({ ok: true, trend: newTrend })
   }
   
-  // Add skill gap
-  if (action === 'addGap') {
-    const newGap: SkillGap = {
-      id: `gap-${Date.now()}`,
-      skill: payload.skill || 'Unknown',
-      demandLevel: payload.demandLevel || 'medium',
-      currentLevel: payload.currentLevel || 'none',
-      priority: payload.priority || 5,
-      notes: payload.notes || '',
-      resources: payload.resources || [],
-      addedAt: new Date().toISOString(),
-    }
-    data.skillGaps.push(newGap)
-    await saveTrends(data)
-    return Response.json({ ok: true, gap: newGap })
-  }
-  
-  // Update trend
-  if (action === 'updateTrend' && id) {
-    const idx = data.trends.findIndex(t => t.id === id)
+  if (action === 'save' && id) {
+    const idx = trends.findIndex(t => t.id === id)
     if (idx !== -1) {
-      data.trends[idx] = { ...data.trends[idx], ...payload, updatedAt: new Date().toISOString() }
-      await saveTrends(data)
+      trends[idx].saved = true
+      trends[idx].notes = payload.notes || trends[idx].notes || ''
+      trends[idx].updatedAt = new Date().toISOString()
+      await saveTrends(trends)
+      
+      // Write to memory file
+      await writeToMemory(trends[idx])
+      
       return Response.json({ ok: true })
     }
   }
   
-  // Update skill gap
-  if (action === 'updateGap' && id) {
-    const idx = data.skillGaps.findIndex(g => g.id === id)
+  if (action === 'unsave' && id) {
+    const idx = trends.findIndex(t => t.id === id)
     if (idx !== -1) {
-      data.skillGaps[idx] = { ...data.skillGaps[idx], ...payload }
-      await saveTrends(data)
+      trends[idx].saved = false
+      trends[idx].updatedAt = new Date().toISOString()
+      await saveTrends(trends)
       return Response.json({ ok: true })
     }
   }
   
-  // Delete trend
-  if (action === 'deleteTrend' && id) {
-    data.trends = data.trends.filter(t => t.id !== id)
-    await saveTrends(data)
-    return Response.json({ ok: true })
+  if (action === 'updateNotes' && id) {
+    const idx = trends.findIndex(t => t.id === id)
+    if (idx !== -1) {
+      trends[idx].notes = payload.notes || ''
+      trends[idx].updatedAt = new Date().toISOString()
+      await saveTrends(trends)
+      
+      // Update memory file
+      if (trends[idx].saved) {
+        await writeToMemory(trends[idx])
+      }
+      
+      return Response.json({ ok: true })
+    }
   }
   
-  // Delete skill gap
-  if (action === 'deleteGap' && id) {
-    data.skillGaps = data.skillGaps.filter(g => g.id !== id)
-    await saveTrends(data)
-    return Response.json({ ok: true })
-  }
-  
-  // Mark analysis done
-  if (action === 'markAnalysis') {
-    data.lastAnalysis = new Date().toISOString()
-    await saveTrends(data)
+  if (action === 'delete' && id) {
+    trends = trends.filter(t => t.id !== id)
+    await saveTrends(trends)
     return Response.json({ ok: true })
   }
   

@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 interface BriefingItem {
   id: string
@@ -15,9 +15,22 @@ interface BriefingItem {
   addedAt: string
 }
 
+interface BriefingSummary {
+  text: string
+  sections: {
+    tasksCompleted: string[]
+    dailyBuild: { title: string; description: string } | null
+    topNews: { title: string; summary: string }[]
+    jobUpdates: string[]
+    newIdeas: string[]
+  }
+  generatedAt: string
+}
+
 interface Briefing {
   date: string
   items: BriefingItem[]
+  summary?: BriefingSummary
   sentToChat: boolean
   generatedAt: string
 }
@@ -42,6 +55,10 @@ function BriefingPage() {
   const [loading, setLoading] = useState(true)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [viewBriefing, setViewBriefing] = useState<Briefing | null>(null)
+  const [audioUrl, setAudioUrl] = useState<string | null>(null)
+  const [audioLoading, setAudioLoading] = useState(false)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
 
   const loadData = async () => {
     try {
@@ -66,6 +83,7 @@ function BriefingPage() {
 
   const selectBriefing = async (date: string) => {
     setSelectedDate(date)
+    setAudioUrl(null)
     const res = await fetch(`/api/briefing?date=${date}`)
     if (res.ok) {
       const data = await res.json()
@@ -91,13 +109,46 @@ function BriefingPage() {
     loadData()
   }
 
+  const generateAudio = async () => {
+    if (!viewBriefing?.summary?.text) return
+    setAudioLoading(true)
+    try {
+      const res = await fetch('/api/briefing/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          text: viewBriefing.summary.text,
+          date: viewBriefing.date 
+        })
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setAudioUrl(data.audioUrl)
+      }
+    } catch (err) {
+      console.error('TTS error:', err)
+    }
+    setAudioLoading(false)
+  }
+
+  const togglePlayPause = () => {
+    if (audioRef.current) {
+      if (isPlaying) {
+        audioRef.current.pause()
+      } else {
+        audioRef.current.play()
+      }
+      setIsPlaying(!isPlaying)
+    }
+  }
+
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr + 'T12:00:00')
-    const today = new Date()
-    const yesterday = new Date(today)
+    const todayDate = new Date()
+    const yesterday = new Date(todayDate)
     yesterday.setDate(yesterday.getDate() - 1)
     
-    if (dateStr === today.toISOString().split('T')[0]) return 'Today'
+    if (dateStr === todayDate.toISOString().split('T')[0]) return 'Today'
     if (dateStr === yesterday.toISOString().split('T')[0]) return 'Yesterday'
     return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
   }
@@ -111,7 +162,7 @@ function BriefingPage() {
             <span className="text-2xl">☀️</span>
             <div>
               <h1 className="text-xl font-semibold text-slate-900">Morning Briefing</h1>
-              <p className="text-xs text-slate-500">Your daily industry intelligence</p>
+              <p className="text-xs text-slate-500">Your daily intelligence summary</p>
             </div>
           </div>
           <div className="flex items-center gap-4">
@@ -171,20 +222,152 @@ function BriefingPage() {
                 <span className="text-6xl mb-4 block">☀️</span>
                 <h3 className="text-xl font-semibold text-slate-700 mb-2">No briefing yet</h3>
                 <p className="text-slate-500 max-w-md mx-auto">
-                  I'll gather research papers, articles, and industry news each morning and deliver them here + via text.
-                </p>
-                <p className="text-slate-400 text-sm mt-4">
-                  Topics: Remote Sensing, GIS, Conservation Science, Geospatial Tech
+                  I'll compile overnight work, research, news, and job updates each morning.
                 </p>
               </div>
             ) : (
               <div className="space-y-4">
+                {/* Summary Section - THE KEY NEW FEATURE */}
+                {viewBriefing.summary && (
+                  <div className="bg-gradient-to-r from-amber-500 to-orange-500 rounded-xl p-6 text-white shadow-lg">
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <h2 className="text-xl font-bold">{formatDate(viewBriefing.date)} Summary</h2>
+                        <p className="text-amber-100 text-sm">Your morning briefing at a glance</p>
+                      </div>
+                      
+                      {/* TTS Controls */}
+                      <div className="flex items-center gap-2">
+                        {!audioUrl ? (
+                          <button
+                            onClick={generateAudio}
+                            disabled={audioLoading}
+                            className="flex items-center gap-2 bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg transition disabled:opacity-50"
+                          >
+                            {audioLoading ? (
+                              <>
+                                <span className="animate-spin">⏳</span>
+                                <span>Generating...</span>
+                              </>
+                            ) : (
+                              <>
+                                <span>🔊</span>
+                                <span>Listen</span>
+                              </>
+                            )}
+                          </button>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={togglePlayPause}
+                              className="flex items-center gap-2 bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg transition"
+                            >
+                              <span>{isPlaying ? '⏸️' : '▶️'}</span>
+                              <span>{isPlaying ? 'Pause' : 'Play'}</span>
+                            </button>
+                            <audio 
+                              ref={audioRef} 
+                              src={audioUrl}
+                              onEnded={() => setIsPlaying(false)}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Summary Content */}
+                    <div className="space-y-4">
+                      {/* Tasks Completed */}
+                      {viewBriefing.summary.sections.tasksCompleted.length > 0 && (
+                        <div>
+                          <h3 className="text-sm font-semibold text-amber-200 uppercase tracking-wide mb-2">
+                            ✅ Completed Overnight
+                          </h3>
+                          <ul className="space-y-1">
+                            {viewBriefing.summary.sections.tasksCompleted.map((task, i) => (
+                              <li key={i} className="text-sm text-white/90">• {task}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {/* Daily Build */}
+                      {viewBriefing.summary.sections.dailyBuild && (
+                        <div>
+                          <h3 className="text-sm font-semibold text-amber-200 uppercase tracking-wide mb-2">
+                            🌙 Nightly Build
+                          </h3>
+                          <div className="bg-white/10 rounded-lg p-3">
+                            <p className="font-medium">{viewBriefing.summary.sections.dailyBuild.title}</p>
+                            <p className="text-sm text-white/80 mt-1">{viewBriefing.summary.sections.dailyBuild.description}</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Top News */}
+                      {viewBriefing.summary.sections.topNews.length > 0 && (
+                        <div>
+                          <h3 className="text-sm font-semibold text-amber-200 uppercase tracking-wide mb-2">
+                            📰 Top News
+                          </h3>
+                          <div className="grid gap-2">
+                            {viewBriefing.summary.sections.topNews.slice(0, 3).map((item, i) => (
+                              <div key={i} className="bg-white/10 rounded-lg p-3">
+                                <p className="font-medium text-sm">{item.title}</p>
+                                <p className="text-xs text-white/70 mt-1">{item.summary}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Job Updates */}
+                      {viewBriefing.summary.sections.jobUpdates.length > 0 && (
+                        <div>
+                          <h3 className="text-sm font-semibold text-amber-200 uppercase tracking-wide mb-2">
+                            🎯 Job Updates
+                          </h3>
+                          <ul className="space-y-1">
+                            {viewBriefing.summary.sections.jobUpdates.map((update, i) => (
+                              <li key={i} className="text-sm text-white/90">• {update}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {/* New Ideas */}
+                      {viewBriefing.summary.sections.newIdeas.length > 0 && (
+                        <div>
+                          <h3 className="text-sm font-semibold text-amber-200 uppercase tracking-wide mb-2">
+                            💡 New Ideas
+                          </h3>
+                          <ul className="space-y-1">
+                            {viewBriefing.summary.sections.newIdeas.map((idea, i) => (
+                              <li key={i} className="text-sm text-white/90">• {idea}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Full Text (collapsible) */}
+                    <details className="mt-4">
+                      <summary className="text-sm text-amber-200 cursor-pointer hover:text-white">
+                        View full summary text
+                      </summary>
+                      <div className="mt-3 p-4 bg-white/10 rounded-lg text-sm whitespace-pre-wrap">
+                        {viewBriefing.summary.text}
+                      </div>
+                    </details>
+                  </div>
+                )}
+
                 {/* Briefing Header */}
                 <div className="bg-white rounded-xl border border-amber-200 p-5">
                   <div className="flex items-center justify-between">
                     <div>
                       <h2 className="text-lg font-semibold text-slate-900">
-                        {formatDate(viewBriefing.date)} Briefing
+                        Research & News Items
                       </h2>
                       <p className="text-sm text-slate-500">
                         {viewBriefing.items.length} items · {viewBriefing.items.filter(i => !i.read).length} unread
@@ -272,6 +455,12 @@ function BriefingPage() {
                     </div>
                   </div>
                 ))}
+
+                {viewBriefing.items.length === 0 && !viewBriefing.summary && (
+                  <div className="text-center py-8 text-slate-400">
+                    No items in this briefing yet
+                  </div>
+                )}
               </div>
             )}
           </div>

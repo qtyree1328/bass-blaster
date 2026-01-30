@@ -135,6 +135,9 @@ function UsagePage() {
           <div className="text-center py-12 text-slate-500">Loading usage data...</div>
         ) : usage ? (
           <div className="space-y-6">
+            {/* $200 Subscription Progress */}
+            <SubscriptionProgress totalCost={usage.totalCost} />
+
             {/* Context Window - Current Session */}
             {usage.currentSession && (
               <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-xl p-5 mb-6">
@@ -333,6 +336,88 @@ function StatCard({ label, value, subtext, tooltip, color }: {
       </p>
       <p className="text-2xl font-bold">{value}</p>
       <p className="text-xs opacity-60 mt-1">{subtext}</p>
+    </div>
+  )
+}
+
+function SubscriptionProgress({ totalCost }: { totalCost: number }) {
+  const MAX_BUDGET = 200
+  const BILLING_CYCLE_DAYS = 30
+  
+  // Calculate days into billing cycle (assuming starts on 1st of month)
+  const now = new Date()
+  const dayOfMonth = now.getDate()
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+  const daysRemaining = daysInMonth - dayOfMonth
+  
+  // Calculate usage percentage and projections
+  const usagePercent = (totalCost / MAX_BUDGET) * 100
+  const dailyRate = dayOfMonth > 0 ? totalCost / dayOfMonth : 0
+  const projectedTotal = dailyRate * daysInMonth
+  const projectedPercent = (projectedTotal / MAX_BUDGET) * 100
+  
+  // Status colors
+  const getStatusColor = (percent: number) => {
+    if (percent > 90) return 'text-red-600 bg-red-50 border-red-200'
+    if (percent > 70) return 'text-amber-600 bg-amber-50 border-amber-200'
+    return 'text-emerald-600 bg-emerald-50 border-emerald-200'
+  }
+  
+  const getBarColor = (percent: number) => {
+    if (percent > 90) return 'bg-red-500'
+    if (percent > 70) return 'bg-amber-500'
+    return 'bg-emerald-500'
+  }
+
+  return (
+    <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-xl p-6 text-white">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="text-lg font-semibold">💳 Monthly Budget</h3>
+          <p className="text-slate-400 text-sm">Claude Max $200/month subscription</p>
+        </div>
+        <div className="text-right">
+          <p className="text-3xl font-bold">${totalCost.toFixed(2)}</p>
+          <p className="text-slate-400 text-sm">of ${MAX_BUDGET}</p>
+        </div>
+      </div>
+      
+      {/* Progress bar */}
+      <div className="h-4 rounded-full overflow-hidden bg-slate-700 mb-4">
+        <div 
+          className={`h-full transition-all ${getBarColor(usagePercent)}`}
+          style={{ width: `${Math.min(usagePercent, 100)}%` }}
+        />
+      </div>
+      
+      {/* Stats row */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className={`rounded-lg p-3 border ${getStatusColor(usagePercent)}`}>
+          <p className="text-xs opacity-70 mb-1">Used</p>
+          <p className="text-xl font-bold">{usagePercent.toFixed(1)}%</p>
+        </div>
+        <div className="rounded-lg p-3 bg-slate-700/50 border border-slate-600">
+          <p className="text-xs text-slate-400 mb-1">Days Left</p>
+          <p className="text-xl font-bold text-white">{daysRemaining}</p>
+        </div>
+        <div className={`rounded-lg p-3 border ${getStatusColor(projectedPercent)}`}>
+          <p className="text-xs opacity-70 mb-1">Projected</p>
+          <p className="text-xl font-bold">${projectedTotal.toFixed(0)}</p>
+        </div>
+      </div>
+      
+      {/* Warning if over budget projection */}
+      {projectedPercent > 100 && (
+        <div className="mt-4 p-3 bg-red-500/20 border border-red-500/40 rounded-lg text-sm">
+          ⚠️ At current rate, you'll hit ${projectedTotal.toFixed(0)} by month end ({projectedPercent.toFixed(0)}% of budget)
+        </div>
+      )}
+      
+      {/* Daily rate */}
+      <div className="mt-4 text-xs text-slate-400 flex justify-between">
+        <span>Daily avg: ${dailyRate.toFixed(2)}/day</span>
+        <span>Day {dayOfMonth} of {daysInMonth}</span>
+      </div>
     </div>
   )
 }
