@@ -7,7 +7,7 @@ export const Route = createFileRoute('/')({
 
 interface Task {
   description: string
-  status: 'running' | 'pending' | 'completed'
+  status: 'backlog' | 'in_progress' | 'review' | 'done'
   timestamp?: string
 }
 
@@ -93,9 +93,10 @@ function CommandCenter() {
     return () => clearInterval(interval)
   }, [])
 
-  const running = tasks.filter(t => t.status === 'running')
-  const pending = tasks.filter(t => t.status === 'pending')
-  const completed = tasks.filter(t => t.status === 'completed')
+  // Match Kanban statuses: in_progress is "Currently Working On"
+  const inProgress = tasks.filter(t => t.status === 'in_progress').sort((a, b) => a.order - b.order)
+  const pending = tasks.filter(t => t.status === 'backlog')
+  const completed = tasks.filter(t => t.status === 'done')
 
   const formatTokens = (n: number) => {
     if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M'
@@ -138,13 +139,13 @@ function CommandCenter() {
 
       <main className="max-w-6xl mx-auto px-6 py-8">
         {/* Current Task Banner */}
-        {running.length > 0 && (
+        {inProgress.length > 0 && (
           <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
             <div className="flex items-center gap-2 mb-1">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
               <span className="text-xs font-medium text-emerald-700">Currently Working On</span>
             </div>
-            <p className="text-slate-900 font-medium">{running[0].description}</p>
+            <p className="text-slate-900 font-medium">{inProgress[0].title}</p>
           </div>
         )}
 
@@ -215,7 +216,7 @@ function CommandCenter() {
             icon="📋" 
             name="Kanban" 
             desc="Accountability hub - significant tasks"
-            highlight={running.length > 0}
+            highlight={inProgress.length > 0}
           />
           <NavCard 
             to="/activity-log" 
@@ -275,7 +276,13 @@ function CommandCenter() {
             to="/sketch" 
             icon="✏️" 
             name="Quick Sketch" 
-            desc="Draw AOIs, export GeoJSON"
+            desc="Draw & export GeoJSON"
+          />
+          <NavCard 
+            to="/timelapse" 
+            icon="🛰️" 
+            name="Timelapse" 
+            desc="NASA satellite timelapses"
           />
         </div>
 

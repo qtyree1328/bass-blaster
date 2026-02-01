@@ -2,8 +2,29 @@ import { createFileRoute } from '@tanstack/react-router'
 import { readFile, writeFile, mkdir } from 'fs/promises'
 import { existsSync } from 'fs'
 import path from 'path'
+import { exec } from 'child_process'
+import { promisify } from 'util'
 
+const execAsync = promisify(exec)
 const CONSIDERATIONS_PATH = path.join(process.env.HOME || '', '.clawdbot/considerations.json')
+
+async function notifyAgent(topic: string, content: string) {
+  const message = `[Command Center] consideration-chat: "${topic}" — new-message\\nContent: ${content}`
+  try {
+    await execAsync(`clawdbot system event --text "${message.replace(/"/g, '\\"').replace(/\n/g, '\\n')}" --mode now`, {
+      timeout: 15000,
+    })
+  } catch (e) {
+    console.error('Failed to notify agent:', e)
+  }
+}
+
+interface ChatMessage {
+  id: string
+  author: 'user' | 'ai'
+  content: string
+  timestamp: string
+}
 
 interface Consideration {
   id: string
@@ -14,6 +35,7 @@ interface Consideration {
   notes: string[]
   tags: string[]
   status: 'new' | 'reviewing' | 'actionable' | 'archived'
+  chat?: ChatMessage[]
   createdAt: string
   updatedAt?: string
 }
@@ -127,6 +149,29 @@ async function handlePost({ request }: { request: Request }) {
     considerations[idx].updatedAt = new Date().toISOString()
     await saveConsiderations(considerations)
     return Response.json({ ok: true, consideration: considerations[idx] })
+  }
+  
+  // Add chat message to consideration
+  if (action === 'add-chat' && id) {
+    const idx = considerations.findIndex(c => c.id === id)
+    if (idx === -1) return Response.json({ error: 'Not found' }, { status: 404 })
+    
+    const message: ChatMessage = {
+      id: `msg-${Date.now()}`,
+      author: payload.author || 'user',
+      content: payload.content || '',
+      timestamp: new Date().toISOString(),
+    }
+    considerations[idx].chat = [...(considerations[idx].chat || []), message]
+    considerations[idx].updatedAt = new Date().toISOString()
+    await saveConsiderations(considerations)
+    
+    // Notify agent when user sends a chat message
+    if (message.author === 'user') {
+      notifyAgent(considerations[idx].topic, message.content).catch(() => {})
+    }
+    
+    return Response.json({ ok: true, consideration: considerations[idx], message })
   }
   
   // Change status

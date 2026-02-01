@@ -39,6 +39,160 @@ export const Route = createFileRoute('/briefing/')({
   component: BriefingPage,
 })
 
+// Calendar Component
+function BriefingCalendar({ 
+  briefings, 
+  selectedDate, 
+  onSelectDate 
+}: { 
+  briefings: Briefing[]
+  selectedDate: string | null
+  onSelectDate: (date: string) => void 
+}) {
+  const [viewMonth, setViewMonth] = useState(new Date())
+  
+  const briefingDates = new Set(briefings.map(b => b.date))
+  
+  const getDaysInMonth = (date: Date) => {
+    const year = date.getFullYear()
+    const month = date.getMonth()
+    const firstDay = new Date(year, month, 1)
+    const lastDay = new Date(year, month + 1, 0)
+    const daysInMonth = lastDay.getDate()
+    const startingDay = firstDay.getDay()
+    
+    const days: (number | null)[] = []
+    for (let i = 0; i < startingDay; i++) days.push(null)
+    for (let i = 1; i <= daysInMonth; i++) days.push(i)
+    return days
+  }
+  
+  const formatMonthYear = (date: Date) => {
+    return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+  }
+  
+  const getDateString = (day: number) => {
+    const year = viewMonth.getFullYear()
+    const month = String(viewMonth.getMonth() + 1).padStart(2, '0')
+    const dayStr = String(day).padStart(2, '0')
+    return `${year}-${month}-${dayStr}`
+  }
+  
+  const prevMonth = () => {
+    setViewMonth(new Date(viewMonth.getFullYear(), viewMonth.getMonth() - 1, 1))
+  }
+  
+  const nextMonth = () => {
+    setViewMonth(new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 1))
+  }
+  
+  const today = new Date().toISOString().split('T')[0]
+  const days = getDaysInMonth(viewMonth)
+  
+  return (
+    <div>
+      {/* Month Navigation */}
+      <div className="flex items-center justify-between mb-3">
+        <button 
+          onClick={prevMonth}
+          className="p-1 hover:bg-amber-100 rounded transition text-slate-500 hover:text-slate-700"
+        >
+          ←
+        </button>
+        <h2 className="text-sm font-semibold text-slate-700">
+          {formatMonthYear(viewMonth)}
+        </h2>
+        <button 
+          onClick={nextMonth}
+          className="p-1 hover:bg-amber-100 rounded transition text-slate-500 hover:text-slate-700"
+        >
+          →
+        </button>
+      </div>
+      
+      {/* Day Headers */}
+      <div className="grid grid-cols-7 gap-1 mb-1">
+        {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(d => (
+          <div key={d} className="text-center text-xs text-slate-400 py-1">
+            {d}
+          </div>
+        ))}
+      </div>
+      
+      {/* Calendar Grid */}
+      <div className="grid grid-cols-7 gap-1">
+        {days.map((day, i) => {
+          if (day === null) {
+            return <div key={`empty-${i}`} className="aspect-square" />
+          }
+          
+          const dateStr = getDateString(day)
+          const hasBriefing = briefingDates.has(dateStr)
+          const isSelected = selectedDate === dateStr
+          const isToday = dateStr === today
+          
+          return (
+            <button
+              key={day}
+              onClick={() => hasBriefing && onSelectDate(dateStr)}
+              disabled={!hasBriefing}
+              className={`
+                aspect-square rounded-lg text-xs font-medium transition relative
+                ${isSelected 
+                  ? 'bg-amber-500 text-white' 
+                  : hasBriefing 
+                    ? 'bg-amber-100 text-amber-700 hover:bg-amber-200 cursor-pointer' 
+                    : 'text-slate-300 cursor-default'
+                }
+                ${isToday && !isSelected ? 'ring-2 ring-amber-400 ring-offset-1' : ''}
+              `}
+            >
+              {day}
+              {hasBriefing && !isSelected && (
+                <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 bg-amber-500 rounded-full" />
+              )}
+            </button>
+          )
+        })}
+      </div>
+      
+      {/* Legend */}
+      <div className="mt-4 pt-3 border-t border-slate-100">
+        <div className="flex items-center gap-2 text-xs text-slate-500">
+          <span className="w-3 h-3 bg-amber-100 rounded" />
+          <span>Has briefing</span>
+        </div>
+      </div>
+      
+      {/* Quick List */}
+      <div className="mt-4 pt-3 border-t border-slate-100">
+        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Recent</h3>
+        <div className="space-y-1 max-h-32 overflow-y-auto">
+          {briefings.slice(0, 7).map(b => (
+            <button
+              key={b.date}
+              onClick={() => onSelectDate(b.date)}
+              className={`w-full text-left px-2 py-1 rounded text-xs transition ${
+                selectedDate === b.date
+                  ? 'bg-amber-500 text-white'
+                  : 'text-slate-600 hover:bg-amber-50'
+              }`}
+            >
+              {new Date(b.date + 'T12:00:00').toLocaleDateString('en-US', { 
+                month: 'short', 
+                day: 'numeric' 
+              })}
+              <span className={`float-right ${selectedDate === b.date ? 'text-amber-100' : 'text-slate-400'}`}>
+                {b.items.length}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const TYPE_CONFIG: Record<string, { icon: string; label: string; color: string }> = {
   paper: { icon: '📄', label: 'Research Paper', color: 'bg-purple-100 text-purple-700' },
   article: { icon: '📰', label: 'Article', color: 'bg-blue-100 text-blue-700' },
@@ -181,35 +335,14 @@ function BriefingPage() {
       <main className="max-w-5xl mx-auto px-6 py-8">
         <div className="grid grid-cols-12 gap-6">
           
-          {/* Sidebar - Recent Briefings */}
+          {/* Sidebar - Calendar */}
           <div className="col-span-3">
             <div className="bg-white rounded-xl border border-amber-200 p-4 sticky top-24">
-              <h2 className="text-sm font-semibold text-slate-700 mb-3">Recent Briefings</h2>
-              <div className="space-y-1">
-                {recent.map(b => (
-                  <button
-                    key={b.date}
-                    onClick={() => selectBriefing(b.date)}
-                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition ${
-                      selectedDate === b.date
-                        ? 'bg-amber-500 text-white'
-                        : 'text-slate-600 hover:bg-amber-50'
-                    }`}
-                  >
-                    <span>{formatDate(b.date)}</span>
-                    <span className={`float-right text-xs ${
-                      selectedDate === b.date ? 'text-amber-100' : 'text-slate-400'
-                    }`}>
-                      {b.items.length} items
-                    </span>
-                  </button>
-                ))}
-                {recent.length === 0 && (
-                  <p className="text-slate-400 text-sm text-center py-4">
-                    No briefings yet
-                  </p>
-                )}
-              </div>
+              <BriefingCalendar
+                briefings={recent}
+                selectedDate={selectedDate}
+                onSelectDate={selectBriefing}
+              />
             </div>
           </div>
 

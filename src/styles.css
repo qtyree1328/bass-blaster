@@ -435,6 +435,57 @@ code, pre {
 }
 
 /* =============================================================================
+   FORM ELEMENTS - Fix text visibility on light backgrounds
+============================================================================= */
+/* Ensure dark text on light-background inputs */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="url"],
+input[type="search"],
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"],
+textarea,
+select {
+  color: #1e293b; /* slate-800 - dark readable text */
+}
+
+/* Placeholder styling */
+input::placeholder,
+textarea::placeholder {
+  color: #94a3b8; /* slate-400 */
+}
+
+/* For inputs/textareas with explicit dark backgrounds, override to light text */
+input.bg-shell-900,
+input.bg-shell-800,
+input.bg-gray-800,
+input.bg-gray-900,
+input.bg-slate-800,
+input.bg-slate-900,
+textarea.bg-shell-900,
+textarea.bg-shell-800,
+textarea.bg-gray-800,
+textarea.bg-gray-900,
+textarea.bg-slate-800,
+textarea.bg-slate-900 {
+  color: #e2e8f0; /* slate-200 - light readable text */
+}
+
+input.bg-shell-900::placeholder,
+input.bg-shell-800::placeholder,
+input.bg-gray-800::placeholder,
+input.bg-gray-900::placeholder,
+textarea.bg-shell-900::placeholder,
+textarea.bg-shell-800::placeholder,
+textarea.bg-gray-800::placeholder,
+textarea.bg-gray-900::placeholder {
+  color: #64748b; /* slate-500 */
+}
+
+/* =============================================================================
    MOBILE RESPONSIVE STYLES
 ============================================================================= */
 @media (max-width: 768px) {

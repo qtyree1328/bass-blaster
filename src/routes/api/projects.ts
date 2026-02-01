@@ -2,8 +2,25 @@ import { createFileRoute } from '@tanstack/react-router'
 import { readFile, writeFile, mkdir } from 'fs/promises'
 import { existsSync } from 'fs'
 import path from 'path'
+import { exec } from 'child_process'
+import { promisify } from 'util'
 
+const execAsync = promisify(exec)
 const PROJECTS_PATH = path.join(process.env.HOME || '', '.clawdbot/projects/projects.json')
+
+async function notifyAgent(type: string, action: string, title: string, content?: string) {
+  let message = `[Command Center] ${type}: "${title}" — ${action}`
+  if (content) {
+    message += `\nContent: ${content}`
+  }
+  try {
+    await execAsync(`clawdbot system event --text "${message.replace(/"/g, '\\"').replace(/\n/g, '\\n')}" --mode now`, {
+      timeout: 15000,
+    })
+  } catch (e) {
+    console.error('Failed to notify agent:', e)
+  }
+}
 
 interface ChatMessage {
   id: string
@@ -218,6 +235,12 @@ async function handlePost({ request }: { request: Request }) {
     projects[idx].chat = [...(projects[idx].chat || []), message]
     projects[idx].updatedAt = new Date().toISOString()
     await saveProjects(projects)
+    
+    // Notify agent when user sends a chat message
+    if (message.author === 'user') {
+      notifyAgent('project-chat', 'new-message', projects[idx].name, message.content).catch(() => {})
+    }
+    
     return Response.json({ ok: true, project: projects[idx], message })
   }
   

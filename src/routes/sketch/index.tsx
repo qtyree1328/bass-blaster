@@ -40,6 +40,12 @@ function SketchPage() {
   const [cursorCoords, setCursorCoords] = useState<{ lat: number; lng: number } | null>(null)
   const [totalArea, setTotalArea] = useState<number>(0)
   const [mapReady, setMapReady] = useState(false)
+  const [locationSearch, setLocationSearch] = useState('')
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [searchError, setSearchError] = useState('')
+  const [boundaryMethod, setBoundaryMethod] = useState<'nominatim' | 'overpass' | 'osmfr'>('nominatim')
+  const [exportFilename, setExportFilename] = useState('sketch')
+  const [exportFormat, setExportFormat] = useState<'geojson' | 'shapefile'>('geojson')
 
   // Load saved sketches
   useEffect(() => {
@@ -207,14 +213,47 @@ function SketchPage() {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  const downloadGeoJSON = () => {
-    const blob = new Blob([geojsonOutput], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `sketch-${Date.now()}.geojson`
-    a.click()
-    URL.revokeObjectURL(url)
+  const downloadExport = async () => {
+    if (!geojsonOutput) return
+    
+    const filename = exportFilename.trim() || 'sketch'
+    
+    if (exportFormat === 'geojson') {
+      const blob = new Blob([geojsonOutput], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename.endsWith('.geojson') ? filename : `${filename}.geojson`
+      a.click()
+      URL.revokeObjectURL(url)
+    } else if (exportFormat === 'shapefile') {
+      try {
+        const shpwrite = await import('@mapbox/shp-write')
+        const geojson = JSON.parse(geojsonOutput)
+        
+        // shp-write expects a FeatureCollection
+        const options = {
+          folder: filename,
+          types: {
+            point: 'points',
+            polygon: 'polygons', 
+            line: 'lines'
+          }
+        }
+        
+        // Generate shapefile as zip
+        const zipBlob = await shpwrite.zip(geojson, options)
+        const url = URL.createObjectURL(zipBlob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = filename.endsWith('.zip') ? filename : `${filename}.zip`
+        a.click()
+        URL.revokeObjectURL(url)
+      } catch (e) {
+        console.error('Shapefile export failed:', e)
+        alert('Shapefile export failed. Try GeoJSON instead.')
+      }
+    }
   }
 
   const saveSketch = () => {
@@ -304,25 +343,183 @@ function SketchPage() {
     }
   }
 
-  const goToLocation = async () => {
-    const input = prompt('Enter coordinates (lat, lng) or place name:')
-    if (!input || !mapInstanceRef.current) return
+  const goToLocation = async (generateBounds: boolean = false) => {
+    if (!locationSearch.trim() || !mapInstanceRef.current) return
     
-    // Try parsing as coordinates
+    setSearchLoading(true)
+    setSearchError('')
+    
+    const input = locationSearch.trim()
+    
+    // Try parsing as coordinates first
     const coordMatch = input.match(/(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)/)
     if (coordMatch) {
       mapInstanceRef.current.setView([parseFloat(coordMatch[1]), parseFloat(coordMatch[2])], 12)
+      setSearchLoading(false)
+      setLocationSearch('')
       return
     }
+
+    const L = (await import('leaflet')).default
     
-    // Try geocoding
     try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(input)}`)
-      const data = await res.json()
-      if (data.length > 0) {
-        mapInstanceRef.current.setView([parseFloat(data[0].lat), parseFloat(data[0].lon)], 12)
+      if (!generateBounds) {
+        // Just search and fly to location
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(input)}`)
+        const data = await res.json()
+        if (data.length > 0) {
+          mapInstanceRef.current.setView([parseFloat(data[0].lat), parseFloat(data[0].lon)], 12)
+        } else {
+          setSearchError('Location not found')
+        }
+        setSearchLoading(false)
+        setLocationSearch('')
+        return
       }
-    } catch {}
+
+      // Generate bounds using selected method
+      let geojson: any = null
+      let methodNote = ''
+
+      if (boundaryMethod === 'nominatim') {
+        // Method A: Nominatim with polygon_geojson
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&polygon_geojson=1&polygon_threshold=0.0001&q=${encodeURIComponent(input)}`)
+        const data = await res.json()
+        if (data.length > 0 && data[0].geojson) {
+          geojson = data[0].geojson
+          methodNote = 'Nominatim polygon'
+        } else if (data.length > 0 && data[0].boundingbox) {
+          // Fallback to bbox
+          const [south, north, west, east] = data[0].boundingbox.map(parseFloat)
+          geojson = {
+            type: 'Polygon',
+            coordinates: [[[west, south], [east, south], [east, north], [west, north], [west, south]]]
+          }
+          methodNote = 'Nominatim bbox (no polygon available)'
+        }
+      } else if (boundaryMethod === 'overpass') {
+        // Method B: Overpass API - search for boundary relations
+        // First get the OSM ID from Nominatim
+        const nomRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(input)}`)
+        const nomData = await nomRes.json()
+        
+        if (nomData.length > 0) {
+          const osmType = nomData[0].osm_type
+          const osmId = nomData[0].osm_id
+          
+          if (osmType === 'relation') {
+            // Query Overpass for the relation geometry
+            const overpassQuery = `[out:json];relation(${osmId});out geom;`
+            const overpassRes = await fetch('https://overpass-api.de/api/interpreter', {
+              method: 'POST',
+              body: overpassQuery
+            })
+            const overpassData = await overpassRes.json()
+            
+            if (overpassData.elements?.length > 0) {
+              const relation = overpassData.elements[0]
+              // Convert Overpass geometry to GeoJSON
+              if (relation.members) {
+                const outerWays = relation.members.filter((m: any) => m.type === 'way' && m.role === 'outer')
+                if (outerWays.length > 0) {
+                  // Build polygon from outer ways
+                  const coords: number[][] = []
+                  outerWays.forEach((way: any) => {
+                    if (way.geometry) {
+                      way.geometry.forEach((pt: any) => coords.push([pt.lon, pt.lat]))
+                    }
+                  })
+                  if (coords.length > 2) {
+                    geojson = { type: 'Polygon', coordinates: [coords] }
+                    methodNote = 'Overpass relation'
+                  }
+                }
+              }
+            }
+          }
+          
+          if (!geojson) {
+            // Fallback to Nominatim bbox
+            const [south, north, west, east] = nomData[0].boundingbox.map(parseFloat)
+            geojson = {
+              type: 'Polygon',
+              coordinates: [[[west, south], [east, south], [east, north], [west, north], [west, south]]]
+            }
+            methodNote = 'Overpass fallback (bbox)'
+          }
+        }
+      } else if (boundaryMethod === 'osmfr') {
+        // Method C: polygons.openstreetmap.fr
+        // First get OSM ID from Nominatim
+        const nomRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(input)}`)
+        const nomData = await nomRes.json()
+        
+        if (nomData.length > 0) {
+          const osmType = nomData[0].osm_type
+          const osmId = nomData[0].osm_id
+          
+          // Construct the OSM.fr polygon URL
+          // Format: relation -> r, way -> w, node -> n
+          const prefix = osmType === 'relation' ? 'rel' : osmType === 'way' ? 'way' : 'node'
+          
+          try {
+            const osmfrRes = await fetch(`https://polygons.openstreetmap.fr/get_geojson.py?id=${osmId}&params=0`)
+            if (osmfrRes.ok) {
+              const osmfrData = await osmfrRes.json()
+              if (osmfrData.geometries?.[0]) {
+                geojson = osmfrData.geometries[0]
+                methodNote = 'OSM.fr polygon'
+              } else if (osmfrData.type) {
+                geojson = osmfrData
+                methodNote = 'OSM.fr polygon'
+              }
+            }
+          } catch (e) {
+            console.log('OSM.fr failed, trying Nominatim fallback')
+          }
+          
+          if (!geojson) {
+            // Fallback to Nominatim
+            const [south, north, west, east] = nomData[0].boundingbox.map(parseFloat)
+            geojson = {
+              type: 'Polygon',
+              coordinates: [[[west, south], [east, south], [east, north], [west, north], [west, south]]]
+            }
+            methodNote = 'OSM.fr fallback (bbox)'
+          }
+        }
+      }
+
+      if (geojson && drawnItemsRef.current) {
+        const geoLayer = L.geoJSON(geojson, {
+          style: {
+            color: '#10b981',
+            fillColor: '#10b981',
+            fillOpacity: 0.2,
+            weight: 2,
+          }
+        })
+        
+        geoLayer.eachLayer((layer: any) => {
+          drawnItemsRef.current.addLayer(layer)
+        })
+        
+        if (geoLayer.getBounds().isValid()) {
+          mapInstanceRef.current.fitBounds(geoLayer.getBounds(), { padding: [50, 50] })
+        }
+        updateGeoJSON()
+        if (methodNote) setSearchError(methodNote)
+      } else {
+        setSearchError('No boundary data found')
+      }
+      
+      setLocationSearch('')
+    } catch (e) {
+      console.error('Search error:', e)
+      setSearchError('Search failed - try a different method')
+    }
+    
+    setSearchLoading(false)
   }
 
   return (
@@ -355,22 +552,61 @@ function SketchPage() {
       <div className="flex h-[calc(100vh-73px)]">
         {/* Sidebar */}
         <div className="w-80 bg-white border-r border-slate-200 flex flex-col">
-          {/* Actions */}
-          <div className="p-4 border-b border-slate-200 space-y-2">
+          {/* Location Search */}
+          <div className="p-4 border-b border-slate-200 space-y-3">
+            <div>
+              <label className="text-xs font-medium text-slate-600 mb-1.5 block">
+                Search Location
+              </label>
+              <input
+                type="text"
+                value={locationSearch}
+                onChange={(e) => setLocationSearch(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && goToLocation(false)}
+                placeholder="Yellowstone, Manhattan, 42.36,-71.05..."
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300"
+              />
+              {searchError && (
+                <p className={`text-xs mt-1 ${searchError.includes('fallback') || searchError.includes('bbox') ? 'text-amber-600' : searchError.includes('polygon') || searchError.includes('relation') ? 'text-emerald-600' : 'text-red-500'}`}>{searchError}</p>
+              )}
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-600 mb-1.5 block">
+                Boundary Method
+              </label>
+              <select
+                value={boundaryMethod}
+                onChange={(e) => setBoundaryMethod(e.target.value as any)}
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white"
+              >
+                <option value="nominatim">Nominatim (OSM search)</option>
+                <option value="overpass">Overpass API (relations)</option>
+                <option value="osmfr">OSM.fr Polygons</option>
+              </select>
+            </div>
             <div className="flex gap-2">
               <button
-                onClick={goToLocation}
-                className="flex-1 px-3 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100 transition"
+                onClick={() => goToLocation(false)}
+                disabled={!locationSearch.trim() || searchLoading}
+                className="flex-1 px-3 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100 transition disabled:opacity-50"
               >
-                🔍 Go to Location
+                {searchLoading ? '...' : '🔍 Go'}
               </button>
               <button
-                onClick={clearMap}
-                className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-200 transition"
+                onClick={() => goToLocation(true)}
+                disabled={!locationSearch.trim() || searchLoading}
+                className="flex-1 px-3 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition disabled:opacity-50"
               >
-                Clear
+                {searchLoading ? '...' : '📍 Generate Bounds'}
               </button>
             </div>
+            <p className="text-xs text-slate-400">
+              Try different methods if boundaries are inaccurate
+            </p>
+          </div>
+
+          {/* Actions */}
+          <div className="p-4 border-b border-slate-200 space-y-2">
             <div className="flex gap-2">
               <button
                 onClick={() => setShowSaveModal(true)}
@@ -378,6 +614,12 @@ function SketchPage() {
                 className="flex-1 px-3 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 💾 Save Sketch
+              </button>
+              <button
+                onClick={clearMap}
+                className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-200 transition"
+              >
+                Clear
               </button>
             </div>
           </div>
@@ -424,28 +666,53 @@ function SketchPage() {
             )}
           </div>
 
-          {/* GeoJSON Output */}
-          <div className="border-t border-slate-200 p-4">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-semibold text-slate-700">GeoJSON Output</h3>
-              <div className="flex gap-1">
-                <button
-                  onClick={copyToClipboard}
-                  disabled={!geojsonOutput}
-                  className="px-2 py-1 text-xs bg-slate-100 text-slate-600 rounded hover:bg-slate-200 transition disabled:opacity-50"
-                >
-                  {copied ? '✓ Copied!' : 'Copy'}
-                </button>
-                <button
-                  onClick={downloadGeoJSON}
-                  disabled={!geojsonOutput}
-                  className="px-2 py-1 text-xs bg-slate-100 text-slate-600 rounded hover:bg-slate-200 transition disabled:opacity-50"
-                >
-                  Download
-                </button>
-              </div>
+          {/* Export Section */}
+          <div className="border-t border-slate-200 p-4 space-y-3">
+            <h3 className="text-sm font-semibold text-slate-700">Export</h3>
+            
+            {/* Filename Input */}
+            <div>
+              <label className="text-xs font-medium text-slate-600 mb-1 block">Filename</label>
+              <input
+                type="text"
+                value={exportFilename}
+                onChange={(e) => setExportFilename(e.target.value)}
+                placeholder="my-boundary"
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300"
+              />
             </div>
-            <pre className="bg-slate-900 text-emerald-400 p-3 rounded-lg text-xs overflow-auto max-h-48 font-mono">
+            
+            {/* Format & Download */}
+            <div className="flex gap-2">
+              <select
+                value={exportFormat}
+                onChange={(e) => setExportFormat(e.target.value as any)}
+                className="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white"
+              >
+                <option value="geojson">GeoJSON (.geojson)</option>
+                <option value="shapefile">Shapefile (.zip)</option>
+              </select>
+              <button
+                onClick={downloadExport}
+                disabled={!geojsonOutput}
+                className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition disabled:opacity-50 font-medium"
+              >
+                ⬇️ Download
+              </button>
+            </div>
+            
+            {/* Copy GeoJSON */}
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-slate-500">GeoJSON Preview</span>
+              <button
+                onClick={copyToClipboard}
+                disabled={!geojsonOutput}
+                className="px-2 py-1 text-xs bg-slate-100 text-slate-600 rounded hover:bg-slate-200 transition disabled:opacity-50"
+              >
+                {copied ? '✓ Copied!' : 'Copy'}
+              </button>
+            </div>
+            <pre className="bg-slate-900 text-emerald-400 p-3 rounded-lg text-xs overflow-auto max-h-32 font-mono">
               {geojsonOutput || '{\n  "type": "FeatureCollection",\n  "features": []\n}'}
             </pre>
           </div>

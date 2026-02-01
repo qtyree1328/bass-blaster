@@ -1,6 +1,13 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useState, useEffect } from 'react'
 
+interface ChatMessage {
+  id: string
+  author: 'user' | 'ai'
+  content: string
+  timestamp: string
+}
+
 interface Consideration {
   id: string
   topic: string
@@ -10,6 +17,7 @@ interface Consideration {
   notes: string[]
   tags: string[]
   status: 'new' | 'reviewing' | 'actionable' | 'archived'
+  chat?: ChatMessage[]
   createdAt: string
   updatedAt?: string
 }
@@ -42,6 +50,7 @@ function ConsiderationsPage() {
   const [filter, setFilter] = useState<string>('all')
   const [expanded, setExpanded] = useState<string | null>(null)
   const [noteText, setNoteText] = useState('')
+  const [chatMessage, setChatMessage] = useState('')
 
   const loadData = async () => {
     try {
@@ -84,6 +93,17 @@ function ConsiderationsPage() {
       body: JSON.stringify({ action: 'add-note', id, note: noteText })
     })
     setNoteText('')
+    loadData()
+  }
+
+  const sendChat = async (id: string) => {
+    if (!chatMessage.trim()) return
+    await fetch('/api/considerations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'add-chat', id, author: 'user', content: chatMessage })
+    })
+    setChatMessage('')
     loadData()
   }
 
@@ -278,6 +298,53 @@ function ConsiderationsPage() {
                         className="px-4 py-2 bg-slate-900 text-white text-sm rounded-lg hover:bg-slate-800 transition"
                       >
                         Add
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Chat */}
+                  <div className="border-t border-slate-100 pt-3 mt-3">
+                    <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+                      💬 Discussion {item.chat?.length ? `(${item.chat.length})` : ''}
+                    </h4>
+                    {item.chat && item.chat.length > 0 && (
+                      <div className="space-y-2 mb-3 max-h-48 overflow-y-auto">
+                        {item.chat.map((msg) => (
+                          <div
+                            key={msg.id}
+                            className={`text-sm p-2 rounded-lg ${
+                              msg.author === 'user'
+                                ? 'bg-blue-50 text-blue-900 ml-4'
+                                : 'bg-slate-100 text-slate-700 mr-4'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="font-medium text-xs">
+                                {msg.author === 'user' ? '👤 You' : '🤖 AI'}
+                              </span>
+                              <span className="text-xs text-slate-400">
+                                {new Date(msg.timestamp).toLocaleString()}
+                              </span>
+                            </div>
+                            <p className="whitespace-pre-wrap">{msg.content}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Ask a question or add context..."
+                        value={expanded === item.id ? chatMessage : ''}
+                        onChange={(e) => setChatMessage(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && sendChat(item.id)}
+                        className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      />
+                      <button
+                        onClick={() => sendChat(item.id)}
+                        className="px-4 py-2 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 transition"
+                      >
+                        Send
                       </button>
                     </div>
                   </div>

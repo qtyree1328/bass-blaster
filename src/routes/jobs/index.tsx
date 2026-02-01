@@ -83,7 +83,10 @@ function JobsPage() {
         // Migrate old status values
         const migratedJobs = (data.jobs || []).map((j: Job) => ({
           ...j,
-          status: j.status === 'pending' ? 'found' : j.status === 'applied' ? 'submitted' : j.status
+          status: j.status === 'pending' ? 'found' 
+            : j.status === 'applied' ? 'submitted' 
+            : j.status === 'approved' ? 'to_apply'
+            : j.status
         }))
         setJobs(migratedJobs)
       }
@@ -128,11 +131,12 @@ function JobsPage() {
     }
   }
 
-  const moveToApply = async (job: Job) => {
-    // Update status
-    const updated = jobs.map(j => j.id === job.id ? { ...j, status: 'to_apply' as const } : j)
+  const moveToApply = async (job: Job, feedback?: string) => {
+    // Update status with feedback
+    const updated = jobs.map(j => j.id === job.id ? { ...j, status: 'to_apply' as const, notes: feedback || j.notes } : j)
     setJobs(updated)
-    setSelectedJob({ ...job, status: 'to_apply' })
+    setSelectedJob({ ...job, status: 'to_apply', notes: feedback || job.notes })
+    setJobFeedback('')  // Clear feedback
     
     // Save to backend
     await fetch('/api/jobs/queue', {
@@ -171,6 +175,7 @@ function JobsPage() {
   const [rejectReason, setRejectReason] = useState('')
   const [rejectCategory, setRejectCategory] = useState('')
   const [jobToReject, setJobToReject] = useState<Job | null>(null)
+  const [jobFeedback, setJobFeedback] = useState('')  // Simple feedback for accept/reject
 
   const openRejectModal = (job: Job) => {
     setJobToReject(job)
@@ -193,6 +198,25 @@ function JobsPage() {
     setSelectedJob(null)
     setShowRejectModal(false)
     setJobToReject(null)
+    
+    await fetch('/api/jobs/queue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jobs: updated })
+    })
+  }
+
+  // Simple reject with inline feedback (matches daily builds pattern)
+  const rejectJob = async (job: Job, feedback?: string) => {
+    const updated = jobs.map(j => j.id === job.id ? { 
+      ...j, 
+      status: 'rejected' as const,
+      rejectReason: feedback,
+      rejectedDate: new Date().toISOString().split('T')[0]
+    } : j)
+    setJobs(updated)
+    setSelectedJob(null)
+    setJobFeedback('')
     
     await fetch('/api/jobs/queue', {
       method: 'POST',
@@ -381,20 +405,29 @@ function JobsPage() {
                       </a>
                       
                       {selectedJob.status === 'found' && (
-                        <>
-                          <button
-                            onClick={() => moveToApply(selectedJob)}
-                            className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-sm font-medium transition"
-                          >
-                            Move to Apply →
-                          </button>
-                          <button
-                            onClick={() => openRejectModal(selectedJob)}
-                            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-sm font-medium transition"
-                          >
-                            Not Interested
-                          </button>
-                        </>
+                        <div className="flex flex-col gap-3 w-full">
+                          <textarea
+                            value={jobFeedback}
+                            onChange={(e) => setJobFeedback(e.target.value)}
+                            placeholder="Feedback (optional) — submitted with your choice"
+                            className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none"
+                            rows={2}
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => moveToApply(selectedJob, jobFeedback)}
+                              className="flex-1 px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-medium transition"
+                            >
+                              ✓ Accept → Generate Cover Letter
+                            </button>
+                            <button
+                              onClick={() => rejectJob(selectedJob, jobFeedback)}
+                              className="flex-1 px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition"
+                            >
+                              ✕ Reject
+                            </button>
+                          </div>
+                        </div>
                       )}
                       
                       {selectedJob.status === 'to_apply' && (

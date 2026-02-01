@@ -11,12 +11,11 @@ interface DailyBuild {
   title: string
   description: string
   category: 'workflow' | 'gis-demo' | 'tool' | 'interface' | 'experiment'
-  status: 'pending-review' | 'incorporated' | 'archived' | 'rejected'
+  status: 'pending-review' | 'accepted' | 'rejected'
   buildPath?: string
   previewUrl?: string
   buildLog?: string
   userFeedback?: string
-  incorporatedTo?: string
   createdAt: string
   reviewedAt?: string
 }
@@ -24,8 +23,7 @@ interface DailyBuild {
 interface Stats {
   total: number
   pendingReview: number
-  incorporated: number
-  archived: number
+  accepted: number
 }
 
 const categoryIcons: Record<string, string> = {
@@ -44,24 +42,23 @@ const categoryColors: Record<string, string> = {
   'experiment': 'bg-amber-100 text-amber-700',
 }
 
-const statusColors: Record<string, string> = {
-  'pending-review': 'bg-yellow-100 text-yellow-700 border-yellow-200',
-  'incorporated': 'bg-emerald-100 text-emerald-700 border-emerald-200',
-  'archived': 'bg-slate-100 text-slate-600 border-slate-200',
-  'rejected': 'bg-red-100 text-red-700 border-red-200',
-}
-
 function DailyBuilds() {
   const [builds, setBuilds] = useState<DailyBuild[]>([])
-  const [stats, setStats] = useState<Stats>({ total: 0, pendingReview: 0, incorporated: 0, archived: 0 })
-  const [filter, setFilter] = useState<string>('all')
+  const [stats, setStats] = useState<Stats>({ total: 0, pendingReview: 0, accepted: 0 })
+  const [filter, setFilter] = useState<string>('pending-review')
   const [selectedBuild, setSelectedBuild] = useState<DailyBuild | null>(null)
   const [feedback, setFeedback] = useState('')
   const [loading, setLoading] = useState(true)
+  const [processing, setProcessing] = useState(false)
 
   useEffect(() => {
     loadBuilds()
   }, [filter])
+
+  // Reset feedback when selecting a different build
+  useEffect(() => {
+    setFeedback(selectedBuild?.userFeedback || '')
+  }, [selectedBuild?.id])
 
   const loadBuilds = async () => {
     try {
@@ -70,7 +67,7 @@ function DailyBuilds() {
       if (res.ok) {
         const data = await res.json()
         setBuilds(data.builds || [])
-        setStats(data.stats || { total: 0, pendingReview: 0, incorporated: 0, archived: 0 })
+        setStats(data.stats || { total: 0, pendingReview: 0, accepted: 0 })
       }
     } catch (e) {
       console.error('Failed to load builds:', e)
@@ -78,48 +75,59 @@ function DailyBuilds() {
     setLoading(false)
   }
 
-  const updateBuildStatus = async (buildId: string, status: string, incorporatedTo?: string) => {
+  const handleAccept = async (build: DailyBuild) => {
+    setProcessing(true)
     try {
       const res = await fetch('/api/daily-builds', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          action: 'update', 
-          buildId, 
-          status,
-          incorporatedTo 
+          action: 'accept', 
+          buildId: build.id,
+          feedback: feedback.trim() || undefined
         })
       })
       if (res.ok) {
-        loadBuilds()
+        setFeedback('')
         setSelectedBuild(null)
+        loadBuilds()
       }
     } catch (e) {
-      console.error('Failed to update build:', e)
+      console.error('Failed to accept build:', e)
     }
+    setProcessing(false)
   }
 
-  const submitFeedback = async (buildId: string) => {
-    if (!feedback.trim()) return
+  const handleReject = async (build: DailyBuild) => {
+    setProcessing(true)
     try {
       const res = await fetch('/api/daily-builds', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'feedback', buildId, feedback })
+        body: JSON.stringify({ 
+          action: 'reject', 
+          buildId: build.id,
+          feedback: feedback.trim() || undefined
+        })
       })
       if (res.ok) {
         setFeedback('')
+        setSelectedBuild(null)
         loadBuilds()
       }
     } catch (e) {
-      console.error('Failed to submit feedback:', e)
+      console.error('Failed to reject build:', e)
     }
+    setProcessing(false)
   }
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr)
     return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
   }
+
+  const pendingBuilds = builds.filter(b => b.status === 'pending-review')
+  const acceptedBuilds = builds.filter(b => b.status === 'accepted')
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -131,46 +139,48 @@ function DailyBuilds() {
             <span className="text-3xl">🌙</span>
             <div>
               <h1 className="text-xl font-semibold text-slate-900">Daily Builds</h1>
-              <p className="text-xs text-slate-500">Nightly creations while you sleep</p>
+              <p className="text-xs text-slate-500">Nightly creations to review</p>
             </div>
           </div>
           <div className="text-right">
             <div className="text-sm text-slate-600">{stats.pendingReview} pending review</div>
-            <div className="text-xs text-slate-400">{stats.incorporated} incorporated</div>
+            <div className="text-xs text-slate-400">{stats.accepted} accepted</div>
           </div>
         </div>
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-8">
-        {/* Stats Row */}
-        <div className="grid grid-cols-4 gap-4 mb-6">
-          <button 
-            onClick={() => setFilter('all')}
-            className={`rounded-xl border p-4 text-left transition ${filter === 'all' ? 'border-blue-300 bg-blue-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}
-          >
-            <p className="text-xs font-medium text-slate-500 mb-1">Total Builds</p>
-            <p className="text-2xl font-bold text-slate-900">{stats.total}</p>
-          </button>
+        {/* Filter Tabs */}
+        <div className="flex gap-2 mb-6">
           <button 
             onClick={() => setFilter('pending-review')}
-            className={`rounded-xl border p-4 text-left transition ${filter === 'pending-review' ? 'border-yellow-300 bg-yellow-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+              filter === 'pending-review' 
+                ? 'bg-yellow-100 text-yellow-700 border border-yellow-300' 
+                : 'bg-white text-slate-600 border border-slate-200 hover:border-slate-300'
+            }`}
           >
-            <p className="text-xs font-medium text-slate-500 mb-1">Pending Review</p>
-            <p className="text-2xl font-bold text-yellow-600">{stats.pendingReview}</p>
+            Pending Review ({stats.pendingReview})
           </button>
           <button 
-            onClick={() => setFilter('incorporated')}
-            className={`rounded-xl border p-4 text-left transition ${filter === 'incorporated' ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+            onClick={() => setFilter('accepted')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+              filter === 'accepted' 
+                ? 'bg-emerald-100 text-emerald-700 border border-emerald-300' 
+                : 'bg-white text-slate-600 border border-slate-200 hover:border-slate-300'
+            }`}
           >
-            <p className="text-xs font-medium text-slate-500 mb-1">Incorporated</p>
-            <p className="text-2xl font-bold text-emerald-600">{stats.incorporated}</p>
+            Accepted ({stats.accepted})
           </button>
           <button 
-            onClick={() => setFilter('archived')}
-            className={`rounded-xl border p-4 text-left transition ${filter === 'archived' ? 'border-slate-400 bg-slate-100' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+            onClick={() => setFilter('all')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+              filter === 'all' 
+                ? 'bg-blue-100 text-blue-700 border border-blue-300' 
+                : 'bg-white text-slate-600 border border-slate-200 hover:border-slate-300'
+            }`}
           >
-            <p className="text-xs font-medium text-slate-500 mb-1">Archived</p>
-            <p className="text-2xl font-bold text-slate-500">{stats.archived}</p>
+            All
           </button>
         </div>
 
@@ -180,11 +190,11 @@ function DailyBuilds() {
         ) : builds.length === 0 ? (
           <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
             <span className="text-5xl mb-4 block">🌙</span>
-            <h3 className="text-lg font-medium text-slate-700 mb-2">No builds yet</h3>
+            <h3 className="text-lg font-medium text-slate-700 mb-2">No builds to review</h3>
             <p className="text-slate-500 max-w-md mx-auto">
-              {filter === 'all' 
-                ? "I'll start building things for you tonight while you sleep. Check back tomorrow morning!"
-                : `No builds with status "${filter.replace('-', ' ')}"`
+              {filter === 'pending-review' 
+                ? "All caught up! Check back tomorrow morning for new builds."
+                : "No builds in this category yet."
               }
             </p>
           </div>
@@ -211,7 +221,6 @@ function DailyBuilds() {
                       <p className="text-sm text-slate-600 mb-2">{build.description}</p>
                       <div className="flex items-center gap-3 text-xs text-slate-400">
                         <span>{formatDate(build.createdAt)}</span>
-                        {build.buildPath && <span>📁 {build.buildPath.split('/').pop()}</span>}
                         {build.previewUrl && (
                           <a 
                             href={build.previewUrl} 
@@ -226,9 +235,11 @@ function DailyBuilds() {
                       </div>
                     </div>
                   </div>
-                  <span className={`text-xs px-3 py-1 rounded-full border ${statusColors[build.status]}`}>
-                    {build.status.replace('-', ' ')}
-                  </span>
+                  {build.status === 'accepted' && (
+                    <span className="text-xs px-3 py-1 rounded-full border bg-emerald-100 text-emerald-700 border-emerald-200">
+                      accepted
+                    </span>
+                  )}
                 </div>
 
                 {/* Expanded View */}
@@ -237,16 +248,9 @@ function DailyBuilds() {
                     {build.buildLog && (
                       <div className="mb-4">
                         <h4 className="text-xs font-medium text-slate-500 mb-2">Build Log</h4>
-                        <pre className="text-xs bg-slate-50 rounded-lg p-3 overflow-x-auto text-slate-600 max-h-40">
+                        <pre className="text-xs bg-slate-50 rounded-lg p-3 overflow-x-auto text-slate-600 max-h-40 whitespace-pre-wrap">
                           {build.buildLog}
                         </pre>
-                      </div>
-                    )}
-
-                    {build.userFeedback && (
-                      <div className="mb-4 p-3 bg-blue-50 rounded-lg">
-                        <h4 className="text-xs font-medium text-blue-700 mb-1">Your Feedback</h4>
-                        <p className="text-sm text-blue-900">{build.userFeedback}</p>
                       </div>
                     )}
 
@@ -254,51 +258,57 @@ function DailyBuilds() {
                       <>
                         {/* Feedback Input */}
                         <div className="mb-4">
+                          <label className="text-xs font-medium text-slate-500 mb-2 block">
+                            Feedback (optional - submitted with your choice)
+                          </label>
                           <textarea
-                            placeholder="Leave feedback or notes about this build..."
+                            placeholder="What did you think? Any issues or suggestions?"
                             value={feedback}
                             onChange={e => setFeedback(e.target.value)}
                             className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300"
                             rows={2}
                           />
-                          {feedback && (
-                            <button
-                              onClick={() => submitFeedback(build.id)}
-                              className="mt-2 px-3 py-1 text-xs bg-slate-100 hover:bg-slate-200 rounded-lg"
-                            >
-                              Save Feedback
-                            </button>
-                          )}
                         </div>
 
-                        {/* Action Buttons */}
-                        <div className="flex items-center gap-2">
+                        {/* Action Buttons - Only Accept/Reject */}
+                        <div className="flex items-center gap-3">
                           <button
-                            onClick={() => updateBuildStatus(build.id, 'incorporated', 'projects')}
-                            className="px-4 py-2 text-sm bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition"
+                            onClick={() => handleAccept(build)}
+                            disabled={processing}
+                            className="flex-1 px-4 py-3 text-sm bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition disabled:opacity-50 font-medium"
                           >
-                            ✓ Incorporate to Projects
+                            ✓ Accept → Move to Builds
                           </button>
                           <button
-                            onClick={() => updateBuildStatus(build.id, 'archived')}
-                            className="px-4 py-2 text-sm bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition"
+                            onClick={() => handleReject(build)}
+                            disabled={processing}
+                            className="flex-1 px-4 py-3 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600 transition disabled:opacity-50 font-medium"
                           >
-                            📦 Archive
-                          </button>
-                          <button
-                            onClick={() => updateBuildStatus(build.id, 'rejected')}
-                            className="px-4 py-2 text-sm bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition"
-                          >
-                            ✕ Not Useful
+                            ✕ Reject → Delete
                           </button>
                         </div>
+                        <p className="text-xs text-slate-400 mt-2 text-center">
+                          Rejected builds are deleted. Feedback is saved for context.
+                        </p>
                       </>
                     )}
 
-                    {build.status === 'incorporated' && build.incorporatedTo && (
-                      <div className="text-sm text-emerald-600">
-                        ✓ Incorporated to: {build.incorporatedTo}
-                        {build.reviewedAt && <span className="text-slate-400 ml-2">({formatDate(build.reviewedAt)})</span>}
+                    {build.status === 'accepted' && (
+                      <div className="text-sm text-emerald-600 flex items-center gap-2">
+                        <span>✓ Accepted</span>
+                        {build.reviewedAt && (
+                          <span className="text-slate-400">({formatDate(build.reviewedAt)})</span>
+                        )}
+                        <Link to="/builds" className="ml-auto text-blue-500 hover:text-blue-700">
+                          View in Builds →
+                        </Link>
+                      </div>
+                    )}
+
+                    {build.userFeedback && (
+                      <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+                        <h4 className="text-xs font-medium text-blue-700 mb-1">Your Feedback</h4>
+                        <p className="text-sm text-blue-900">{build.userFeedback}</p>
                       </div>
                     )}
                   </div>
