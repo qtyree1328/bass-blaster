@@ -580,6 +580,12 @@
     // Microphone pitch detection
     let audioContext, analyser, micStream;
     let lastDetectedNote = null;
+    let lastNoteTime = 0;
+    let stableNoteCount = 0;
+    let pendingNote = null;
+    const NOTE_COOLDOWN_MS = 800;        // Minimum time between accepting notes
+    const STABILITY_FRAMES_REQUIRED = 4; // Note must be detected this many times in a row
+    const RMS_THRESHOLD = 0.08;          // Minimum volume threshold (higher = less sensitive)
     
     async function setupMicrophone() {
       try {
@@ -613,6 +619,7 @@
       
       const pitch = detectPitch(buffer, audioContext.sampleRate);
       const noteDisplay = document.getElementById('detectedNote');
+      const now = Date.now();
       
       if (pitch > 0) {
         const noteNum = Math.round(12 * Math.log2(pitch / 440) + 69);
@@ -620,12 +627,27 @@
         
         if (noteDisplay) noteDisplay.textContent = '🎤 ' + noteName;
         
-        if (selectedKey && noteName !== lastDetectedNote) {
+        // Stability check: note must be detected multiple times in a row
+        if (noteName === pendingNote) {
+          stableNoteCount++;
+        } else {
+          pendingNote = noteName;
+          stableNoteCount = 1;
+        }
+        
+        // Only accept note if stable AND cooldown has passed
+        if (selectedKey && 
+            stableNoteCount >= STABILITY_FRAMES_REQUIRED && 
+            noteName !== lastDetectedNote &&
+            (now - lastNoteTime) > NOTE_COOLDOWN_MS) {
           lastDetectedNote = noteName;
+          lastNoteTime = now;
           noteOn(noteName);
         }
       } else {
-        lastDetectedNote = null;
+        // Reset stability tracking when no pitch detected
+        pendingNote = null;
+        stableNoteCount = 0;
         if (noteDisplay) noteDisplay.textContent = '🎤 --';
       }
       
@@ -638,7 +660,7 @@
       let rms = 0;
       for (let i = 0; i < SIZE; i++) rms += buffer[i] * buffer[i];
       rms = Math.sqrt(rms / SIZE);
-      if (rms < 0.01) return -1;
+      if (rms < RMS_THRESHOLD) return -1;  // Volume threshold - reject quiet sounds
       
       let r1 = 0, r2 = SIZE - 1;
       const threshold = 0.2;
