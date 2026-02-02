@@ -297,6 +297,47 @@
       </div>
       
       <div class="setting-group">
+        <label>Note Mode</label>
+        <select id="note-mode">
+          <option value="single">Single Note</option>
+          <option value="2-notes">2 Notes (Interval)</option>
+          <option value="3-notes">3 Notes (Triad)</option>
+          <option value="scale" selected>Scale</option>
+        </select>
+      </div>
+      
+      <div class="setting-group" id="interval-group" style="display:none;">
+        <label>Interval</label>
+        <select id="interval-select">
+          <option value="1">Minor 2nd (1 semitone)</option>
+          <option value="2">Major 2nd (2 semitones)</option>
+          <option value="3">Minor 3rd (3 semitones)</option>
+          <option value="4">Major 3rd (4 semitones)</option>
+          <option value="5" selected>Perfect 4th (5 semitones)</option>
+          <option value="6">Tritone (6 semitones)</option>
+          <option value="7">Perfect 5th (7 semitones)</option>
+          <option value="8">Minor 6th (8 semitones)</option>
+          <option value="9">Major 6th (9 semitones)</option>
+          <option value="10">Minor 7th (10 semitones)</option>
+          <option value="11">Major 7th (11 semitones)</option>
+          <option value="12">Octave (12 semitones)</option>
+        </select>
+      </div>
+      
+      <div class="setting-group" id="triad-group" style="display:none;">
+        <label>Triad Type</label>
+        <select id="triad-select">
+          <option value="major" selected>Major (R-3-5)</option>
+          <option value="minor">Minor (R-b3-5)</option>
+          <option value="diminished">Diminished (R-b3-b5)</option>
+          <option value="augmented">Augmented (R-3-#5)</option>
+          <option value="sus2">Sus2 (R-2-5)</option>
+          <option value="sus4">Sus4 (R-4-5)</option>
+          <option value="power">Power Chord (R-5-8)</option>
+        </select>
+      </div>
+      
+      <div class="setting-group" id="scale-group">
         <label>Scale / Mode</label>
         <select id="scale-type">
           <option value="major">Major (Ionian)</option>
@@ -309,6 +350,31 @@
           <option value="pentatonic-major">Pentatonic Major</option>
           <option value="pentatonic-minor" selected>Pentatonic Minor</option>
           <option value="blues">Blues</option>
+        </select>
+      </div>
+      
+      <div class="setting-group">
+        <label>Time Signature</label>
+        <select id="time-sig">
+          <option value="4/4" selected>4/4 (Common)</option>
+          <option value="3/4">3/4 (Waltz)</option>
+          <option value="6/8">6/8 (Compound)</option>
+          <option value="5/4">5/4</option>
+          <option value="7/8">7/8</option>
+        </select>
+      </div>
+      
+      <div class="setting-group">
+        <label>Rhythm Pattern</label>
+        <select id="rhythm-pattern">
+          <option value="8th" selected>8th Notes</option>
+          <option value="quarter">Quarter Notes</option>
+          <option value="16th">16th Notes</option>
+          <option value="triplet">Triplets</option>
+          <option value="dotted-8th">Dotted 8th + 16th</option>
+          <option value="swing">Swing 8ths</option>
+          <option value="syncopated">Syncopated</option>
+          <option value="shuffle">Shuffle</option>
         </select>
       </div>
       
@@ -383,6 +449,29 @@
       'blues': [0, 3, 5, 6, 7, 10]
     };
     
+    // Triad intervals
+    const TRIADS = {
+      'major': [0, 4, 7],
+      'minor': [0, 3, 7],
+      'diminished': [0, 3, 6],
+      'augmented': [0, 4, 8],
+      'sus2': [0, 2, 7],
+      'sus4': [0, 5, 7],
+      'power': [0, 7, 12]
+    };
+    
+    // Rhythm patterns (as beat subdivisions)
+    const RHYTHMS = {
+      'quarter': [1],           // 1 note per beat
+      '8th': [0.5, 0.5],        // 2 notes per beat
+      '16th': [0.25, 0.25, 0.25, 0.25], // 4 notes per beat
+      'triplet': [0.333, 0.333, 0.334], // 3 notes per beat
+      'dotted-8th': [0.75, 0.25], // dotted 8th + 16th
+      'swing': [0.67, 0.33],    // swing feel
+      'syncopated': [0.25, 0.5, 0.25], // syncopation
+      'shuffle': [0.67, 0.33]   // shuffle
+    };
+    
     // State
     let state = {
       running: false,
@@ -393,13 +482,20 @@
       baseBpm: 60,
       acceleration: 0,
       rootNote: 4,
+      noteMode: 'scale',
+      interval: 5,
+      triadType: 'major',
       scaleType: 'pentatonic-minor',
+      rhythmPattern: '8th',
+      timeSig: '4/4',
       notes: [],
       hits: 0,
       misses: 0,
       lastNoteTime: 0,
       scaleNotes: [],
-      currentScaleIndex: 0
+      currentScaleIndex: 0,
+      rhythmIndex: 0,
+      beatInMeasure: 0
     };
     
     // Canvas
@@ -422,20 +518,55 @@
       ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
     }
     
-    function getScaleNotes() {
+    function getNoteSequence() {
       const root = state.rootNote;
-      const intervals = SCALES[state.scaleType];
+      const baseMidi = 40 + root; // Bass range starting E1
       const notes = [];
-      // Generate 2 octaves
-      for (let oct = 0; oct < 2; oct++) {
-        for (const interval of intervals) {
-          notes.push({
-            midi: 40 + root + interval + (oct * 12), // Bass range starting E1
-            name: NOTE_NAMES[(root + interval) % 12]
-          });
-        }
+      
+      switch (state.noteMode) {
+        case 'single':
+          // Just the root note repeated
+          notes.push({ midi: baseMidi, name: NOTE_NAMES[root] });
+          notes.push({ midi: baseMidi + 12, name: NOTE_NAMES[root] }); // Octave up
+          break;
+          
+        case '2-notes':
+          // Root and interval, alternating
+          const interval = state.interval;
+          notes.push({ midi: baseMidi, name: NOTE_NAMES[root] });
+          notes.push({ midi: baseMidi + interval, name: NOTE_NAMES[(root + interval) % 12] });
+          break;
+          
+        case '3-notes':
+          // Triad notes
+          const triad = TRIADS[state.triadType];
+          for (const t of triad) {
+            notes.push({ midi: baseMidi + t, name: NOTE_NAMES[(root + t) % 12] });
+          }
+          break;
+          
+        case 'scale':
+        default:
+          // Full scale across 2 octaves
+          const intervals = SCALES[state.scaleType];
+          for (let oct = 0; oct < 2; oct++) {
+            for (const interval of intervals) {
+              notes.push({
+                midi: baseMidi + interval + (oct * 12),
+                name: NOTE_NAMES[(root + interval) % 12]
+              });
+            }
+          }
+          break;
       }
       return notes;
+    }
+    
+    function getNextRhythmDuration() {
+      const pattern = RHYTHMS[state.rhythmPattern];
+      const duration = pattern[state.rhythmIndex];
+      state.rhythmIndex = (state.rhythmIndex + 1) % pattern.length;
+      return duration;
     }
     
     function spawnNote() {
@@ -586,11 +717,14 @@
       // Remove notes that left the screen
       state.notes = state.notes.filter(n => n.x > -NOTE_RADIUS * 2);
       
-      // Spawn new notes
-      const beatInterval = 60000 / state.bpm;
-      if (now - state.lastNoteTime > beatInterval) {
+      // Spawn new notes based on rhythm pattern
+      const beatDuration = 60000 / state.bpm; // ms per beat
+      const rhythmDuration = state.nextRhythmDuration * beatDuration;
+      
+      if (now - state.lastNoteTime > rhythmDuration) {
         spawnNote();
         state.lastNoteTime = now;
+        state.nextRhythmDuration = getNextRhythmDuration();
       }
     }
     
@@ -673,13 +807,22 @@
         ctx.restore();
       }
       
-      // Scale info
+      // Mode info
       ctx.fillStyle = 'rgba(255,255,255,0.4)';
       ctx.font = '14px "Syne Mono"';
       ctx.textAlign = 'right';
       const rootName = NOTE_NAMES[state.rootNote];
-      const scaleName = $('scale-type').selectedOptions[0].text;
-      ctx.fillText(`${rootName} ${scaleName}`, w - 20, 30);
+      let modeText = rootName;
+      switch (state.noteMode) {
+        case 'single': modeText += ' (Single Note)'; break;
+        case '2-notes': modeText += ' ' + $('interval-select').selectedOptions[0].text; break;
+        case '3-notes': modeText += ' ' + $('triad-select').selectedOptions[0].text; break;
+        case 'scale': modeText += ' ' + $('scale-type').selectedOptions[0].text; break;
+      }
+      ctx.fillText(modeText, w - 20, 30);
+      
+      // Rhythm info
+      ctx.fillText($('rhythm-pattern').selectedOptions[0].text + ' • ' + state.timeSig, w - 20, 50);
     }
     
     let lastTime = 0;
@@ -716,9 +859,16 @@
       state.bpm = state.baseBpm;
       state.acceleration = parseFloat($('acceleration').value) || 0;
       state.rootNote = parseInt($('root-note').value);
+      state.noteMode = $('note-mode').value;
+      state.interval = parseInt($('interval-select').value);
+      state.triadType = $('triad-select').value;
       state.scaleType = $('scale-type').value;
-      state.scaleNotes = getScaleNotes();
+      state.rhythmPattern = $('rhythm-pattern').value;
+      state.timeSig = $('time-sig').value;
+      state.scaleNotes = getNoteSequence();
       state.currentScaleIndex = 0;
+      state.rhythmIndex = 0;
+      state.nextRhythmDuration = getNextRhythmDuration();
       state.notes = [];
       state.hits = 0;
       state.misses = 0;
@@ -733,7 +883,12 @@
       
       // Disable settings while running
       $('root-note').disabled = true;
+      $('note-mode').disabled = true;
+      $('interval-select').disabled = true;
+      $('triad-select').disabled = true;
       $('scale-type').disabled = true;
+      $('time-sig').disabled = true;
+      $('rhythm-pattern').disabled = true;
       $('start-bpm').disabled = true;
       $('acceleration').disabled = true;
       
@@ -778,11 +933,24 @@
       
       // Re-enable settings
       $('root-note').disabled = false;
+      $('note-mode').disabled = false;
+      $('interval-select').disabled = false;
+      $('triad-select').disabled = false;
       $('scale-type').disabled = false;
+      $('time-sig').disabled = false;
+      $('rhythm-pattern').disabled = false;
       $('start-bpm').disabled = false;
       $('acceleration').disabled = false;
       
       render();
+    }
+    
+    // Note mode change handler - show/hide relevant settings
+    function updateNoteModeUI() {
+      const mode = $('note-mode').value;
+      $('interval-group').style.display = mode === '2-notes' ? 'block' : 'none';
+      $('triad-group').style.display = mode === '3-notes' ? 'block' : 'none';
+      $('scale-group').style.display = mode === 'scale' ? 'block' : 'none';
     }
     
     // Event listeners
@@ -791,6 +959,7 @@
     $('stop-btn').addEventListener('click', stop);
     $('resume-btn').addEventListener('click', resume);
     $('end-btn').addEventListener('click', stop);
+    $('note-mode').addEventListener('change', updateNoteModeUI);
     
     window.addEventListener('keydown', e => {
       if (e.code === 'Space' && state.running) {
@@ -801,6 +970,7 @@
     
     window.addEventListener('resize', resize);
     resize();
+    updateNoteModeUI(); // Initialize UI state
     render();
   </script>
 </body>
