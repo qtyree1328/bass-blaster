@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Bass Blaster</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      font-family: 'Courier New', monospace;
+      background: linear-gradient(to bottom, #0a0a2e, #1a0a3e);
+      min-height: 100vh;
+      color: white;
+      overflow-x: hidden;
+    }
+    
+    header {
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(168, 85, 247, 0.3);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .title {
+      font-size: 1.25rem;
+      font-weight: 900;
+      background: linear-gradient(to right, #22d3ee, #ec4899);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    
+    .high-score { color: #a855f7; font-size: 0.875rem; }
+    
+    main {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 16px;
+    }
+    
+    .menu { text-align: center; }
+    
+    .menu h2 {
+      font-size: 2.5rem;
+      font-weight: 900;
+      background: linear-gradient(to right, #22d3ee, #a855f7, #ec4899);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 8px;
+    }
+    
+    .menu p { color: #c4b5fd; margin-bottom: 24px; }
+    
+    .mic-status {
+      background: rgba(0,0,0,0.5);
+      border: 1px solid rgba(168, 85, 247, 0.5);
+      border-radius: 12px;
+      padding: 20px;
+      max-width: 320px;
+      margin: 0 auto 24px;
+    }
+    
+    .mic-status h3 {
+      color: #22d3ee;
+      font-size: 0.875rem;
+      margin-bottom: 12px;
+    }
+    
+    .mic-status.granted { border-color: #22c55e; }
+    .mic-status.denied { border-color: #ef4444; }
+    
+    .btn {
+      padding: 12px 32px;
+      border: none;
+      border-radius: 12px;
+      font-family: inherit;
+      font-weight: 900;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: transform 0.1s, opacity 0.1s;
+    }
+    
+    .btn:hover { transform: scale(1.05); }
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    
+    .btn-primary {
+      background: linear-gradient(to right, #ec4899, #f97316);
+      color: white;
+      box-shadow: 0 4px 20px rgba(236, 72, 153, 0.5);
+    }
+    
+    .btn-mic {
+      background: linear-gradient(to right, #22d3ee, #a855f7);
+      color: white;
+    }
+    
+    .difficulty {
+      margin-bottom: 24px;
+    }
+    
+    .difficulty p {
+      color: #c4b5fd;
+      font-size: 0.875rem;
+      margin-bottom: 8px;
+    }
+    
+    .difficulty-btns {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+    }
+    
+    .diff-btn {
+      padding: 8px 16px;
+      background: rgba(0,0,0,0.5);
+      border: 1px solid rgba(168, 85, 247, 0.5);
+      border-radius: 8px;
+      color: #c4b5fd;
+      font-family: inherit;
+      font-weight: 700;
+      font-size: 0.875rem;
+      cursor: pointer;
+      text-transform: uppercase;
+      transition: all 0.2s;
+    }
+    
+    .diff-btn:hover { border-color: #ec4899; }
+    .diff-btn.active { background: #ec4899; color: white; border-color: #ec4899; }
+    
+    .instructions {
+      background: rgba(0,0,0,0.3);
+      border: 1px solid rgba(34, 211, 238, 0.3);
+      border-radius: 12px;
+      padding: 16px;
+      max-width: 400px;
+      margin: 24px auto 0;
+      text-align: left;
+    }
+    
+    .instructions h3 {
+      color: #22d3ee;
+      font-size: 0.875rem;
+      margin-bottom: 8px;
+    }
+    
+    .instructions ul {
+      list-style: none;
+      font-size: 0.875rem;
+      color: #ddd6fe;
+    }
+    
+    .instructions li { margin-bottom: 4px; }
+    .instructions li::before { content: "• "; }
+    
+    #gameCanvas {
+      width: 100%;
+      max-width: 800px;
+      border-radius: 12px;
+      border: 2px solid #a855f7;
+      box-shadow: 0 4px 30px rgba(168, 85, 247, 0.3);
+    }
+    
+    .detected {
+      text-align: center;
+      color: #c4b5fd;
+      font-size: 0.875rem;
+      margin-top: 8px;
+    }
+    
+    .detected span { color: #22d3ee; font-weight: bold; }
+    
+    .gameover {
+      text-align: center;
+    }
+    
+    .gameover h2 {
+      font-size: 3rem;
+      color: #ef4444;
+      margin-bottom: 16px;
+    }
+    
+    .gameover .score {
+      font-size: 1.5rem;
+      color: #22d3ee;
+      margin-bottom: 8px;
+    }
+    
+    .gameover .new-high {
+      color: #facc15;
+      font-size: 1.125rem;
+      animation: pulse 1s infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    
+    .hidden { display: none !important; }
+    
+    .error-msg {
+      color: #fca5a5;
+      font-size: 0.75rem;
+      margin-top: 8px;
+    }
+    
+    .success-msg {
+      color: #86efac;
+      font-size: 1rem;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="title">BASS BLASTER</div>
+    <div class="high-score">HI: <span id="highScoreDisplay">0</span></div>
+  </header>
+  
+  <main>
+    <!-- Menu -->
+    <div id="menuScreen" class="menu">
+      <h2>BASS BLASTER</h2>
+      <p>Play your bass to blast the notes!</p>
+      
+      <div id="micStatus" class="mic-status">
+        <h3>🎤 MICROPHONE</h3>
+        <div id="micContent">
+          <button id="enableMicBtn" class="btn btn-mic">ENABLE MICROPHONE</button>
+        </div>
+      </div>
+      
+      <div class="difficulty">
+        <p>DIFFICULTY</p>
+        <div class="difficulty-btns">
+          <button class="diff-btn active" data-diff="easy">EASY</button>
+          <button class="diff-btn" data-diff="medium">MEDIUM</button>
+          <button class="diff-btn" data-diff="hard">HARD</button>
+        </div>
+      </div>
+      
+      <button id="startBtn" class="btn btn-primary" disabled>START GAME</button>
+      
+      <div class="instructions">
+        <h3>HOW TO PLAY</h3>
+        <ul>
+          <li>Notes scroll from right to left in 4 lanes (E A D G)</li>
+          <li>Play the matching note on your bass when it enters the purple hit zone</li>
+          <li>Build combos for bonus points</li>
+          <li>Don't let notes get past you — 3 lives!</li>
+        </ul>
+      </div>
+    </div>
+    
+    <!-- Game -->
+    <div id="gameScreen" class="hidden">
+      <canvas id="gameCanvas" width="800" height="320"></canvas>
+      <div class="detected">Playing: <span id="detectedNote">—</span></div>
+    </div>
+    
+    <!-- Game Over -->
+    <div id="gameoverScreen" class="gameover hidden">
+      <h2>GAME OVER</h2>
+      <div class="score">SCORE: <span id="finalScore">0</span></div>
+      <div id="newHighScore" class="new-high hidden">★ NEW HIGH SCORE! ★</div>
+      <br><br>
+      <button id="playAgainBtn" class="btn btn-primary">PLAY AGAIN</button>
+    </div>
+  </main>
+
+  <script>
+    // Note frequencies for bass
+    const NOTES = {
+      'E1': 41.20, 'F1': 43.65, 'F#1': 46.25, 'G1': 49.00, 'G#1': 51.91, 'A1': 55.00, 'A#1': 58.27, 'B1': 61.74,
+      'C2': 65.41, 'C#2': 69.30, 'D2': 73.42, 'D#2': 77.78, 'E2': 82.41, 'F2': 87.31, 'F#2': 92.50, 'G2': 98.00,
+      'G#2': 103.83, 'A2': 110.00, 'A#2': 116.54, 'B2': 123.47, 'C3': 130.81, 'C#3': 138.59, 'D3': 146.83,
+      'D#3': 155.56, 'E3': 164.81, 'F3': 174.61, 'F#3': 185.00, 'G3': 196.00, 'G#3': 207.65, 'A3': 220.00,
+      'A#3': 233.08, 'B3': 246.94, 'C4': 261.63, 'C#4': 277.18, 'D4': 293.66, 'D#4': 311.13, 'E4': 329.63,
+    };
+
+    const GAME_NOTES = ['E', 'A', 'D', 'G'];
+    const LANE_COLORS = ['#ff006650', '#00ff6650', '#ffaa0050', '#00aaff50'];
+    const NOTE_COLORS = { 'E': '#ff0066', 'A': '#00ff66', 'D': '#ffaa00', 'G': '#00aaff' };
+
+    // State
+    let gameState = 'menu';
+    let audioContext = null;
+    let analyser = null;
+    let micGranted = false;
+    let difficulty = 'easy';
+    let score = 0;
+    let lives = 3;
+    let combo = 0;
+    let highScore = parseInt(localStorage.getItem('bassBlasterHigh') || '0');
+    let targets = [];
+    let targetId = 0;
+    let lastSpawn = 0;
+    let animationId = null;
+    let detectedNote = null;
+
+    const diffSettings = {
+      easy: { spawnRate: 1400, speed: 2 },
+      medium: { spawnRate: 1000, speed: 3 },
+      hard: { spawnRate: 700, speed: 4 },
+    };
+
+    // DOM
+    const menuScreen = document.getElementById('menuScreen');
+    const gameScreen = document.getElementById('gameScreen');
+    const gameoverScreen = document.getElementById('gameoverScreen');
+    const micStatus = document.getElementById('micStatus');
+    const micContent = document.getElementById('micContent');
+    const enableMicBtn = document.getElementById('enableMicBtn');
+    const startBtn = document.getElementById('startBtn');
+    const playAgainBtn = document.getElementById('playAgainBtn');
+    const highScoreDisplay = document.getElementById('highScoreDisplay');
+    const detectedNoteEl = document.getElementById('detectedNote');
+    const finalScoreEl = document.getElementById('finalScore');
+    const newHighScoreEl = document.getElementById('newHighScore');
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    highScoreDisplay.textContent = highScore;
+
+    // Difficulty buttons
+    document.querySelectorAll('.diff-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        difficulty = btn.dataset.diff;
+      });
+    });
+
+    // Enable mic
+    enableMicBtn.addEventListener('click', async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 2048;
+        const source = audioContext.createMediaStreamSource(stream);
+        source.connect(analyser);
+        
+        micGranted = true;
+        micStatus.classList.add('granted');
+        micContent.innerHTML = '<div class="success-msg">✓ READY</div>';
+        startBtn.disabled = false;
+      } catch (err) {
+        console.error('Mic error:', err);
+        micStatus.classList.add('denied');
+        micContent.innerHTML = `
+          <div class="error-msg">
+            Microphone access denied.<br><br>
+            <strong>To fix:</strong><br>
+            1. Tap the lock/info icon in address bar<br>
+            2. Allow microphone access<br>
+            3. Refresh the page
+          </div>
+        `;
+      }
+    });
+
+    // Start game
+    startBtn.addEventListener('click', startGame);
+    playAgainBtn.addEventListener('click', startGame);
+
+    function startGame() {
+      gameState = 'playing';
+      score = 0;
+      lives = 3;
+      combo = 0;
+      targets = [];
+      lastSpawn = Date.now();
+      
+      menuScreen.classList.add('hidden');
+      gameoverScreen.classList.add('hidden');
+      gameScreen.classList.remove('hidden');
+      
+      // Resume audio context if suspended (iOS requirement)
+      if (audioContext && audioContext.state === 'suspended') {
+        audioContext.resume();
+      }
+      
+      gameLoop();
+    }
+
+    function endGame() {
+      gameState = 'gameover';
+      cancelAnimationFrame(animationId);
+      
+      if (score > highScore) {
+        highScore = score;
+        localStorage.setItem('bassBlasterHigh', highScore.toString());
+        highScoreDisplay.textContent = highScore;
+        newHighScoreEl.classList.remove('hidden');
+      } else {
+        newHighScoreEl.classList.add('hidden');
+      }
+      
+      finalScoreEl.textContent = score;
+      gameScreen.classList.add('hidden');
+      gameoverScreen.classList.remove('hidden');
+    }
+
+    // Pitch detection
+    function detectPitch(buffer, sampleRate) {
+      const SIZE = buffer.length;
+      const MAX_SAMPLES = Math.floor(SIZE / 2);
+      let bestOffset = -1;
+      let bestCorrelation = 0;
+      let foundGoodCorrelation = false;
+      const correlations = new Float32Array(MAX_SAMPLES);
+
+      let rms = 0;
+      for (let i = 0; i < SIZE; i++) rms += buffer[i] * buffer[i];
+      rms = Math.sqrt(rms / SIZE);
+      if (rms < 0.01) return null;
+
+      let lastCorrelation = 1;
+      for (let offset = 0; offset < MAX_SAMPLES; offset++) {
+        let correlation = 0;
+        for (let i = 0; i < MAX_SAMPLES; i++) {
+          correlation += Math.abs(buffer[i] - buffer[i + offset]);
+        }
+        correlation = 1 - correlation / MAX_SAMPLES;
+        correlations[offset] = correlation;
+
+        if (correlation > 0.9 && correlation > lastCorrelation) {
+          foundGoodCorrelation = true;
+          if (correlation > bestCorrelation) {
+            bestCorrelation = correlation;
+            bestOffset = offset;
+          }
+        } else if (foundGoodCorrelation) {
+          const shift = (correlations[bestOffset + 1] - correlations[bestOffset - 1]) / correlations[bestOffset];
+          return sampleRate / (bestOffset + 8 * shift);
+        }
+        lastCorrelation = correlation;
+      }
+      return bestCorrelation > 0.01 ? sampleRate / bestOffset : null;
+    }
+
+    function getNoteName(freq) {
+      if (freq < 35 || freq > 350) return null;
+      
+      let closestNote = '';
+      let minDiff = Infinity;
+      
+      for (const [note, noteFreq] of Object.entries(NOTES)) {
+        const diff = Math.abs(freq - noteFreq);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closestNote = note;
+        }
+      }
+      
+      const targetFreq = NOTES[closestNote];
+      if (Math.abs(freq - targetFreq) / targetFreq < 0.06) {
+        return closestNote.replace(/[0-9]/g, '');
+      }
+      return null;
+    }
+
+    function gameLoop() {
+      if (gameState !== 'playing') return;
+      
+      const now = Date.now();
+      const settings = diffSettings[difficulty];
+      const laneHeight = canvas.height / 4;
+
+      // Spawn
+      if (now - lastSpawn > settings.spawnRate) {
+        const lane = Math.floor(Math.random() * 4);
+        targets.push({
+          id: targetId++,
+          note: GAME_NOTES[lane],
+          x: canvas.width + 30,
+          y: lane * laneHeight + laneHeight / 2,
+          lane,
+          speed: settings.speed + Math.random() * 0.5,
+          hit: false,
+        });
+        lastSpawn = now;
+      }
+
+      // Detect pitch
+      if (analyser && audioContext) {
+        const buffer = new Float32Array(analyser.fftSize);
+        analyser.getFloatTimeDomainData(buffer);
+        const freq = detectPitch(buffer, audioContext.sampleRate);
+        
+        if (freq) {
+          const note = getNoteName(freq);
+          detectedNote = note;
+          detectedNoteEl.textContent = note || '—';
+          
+          if (note) {
+            targets.forEach(t => {
+              if (!t.hit && t.note === note && t.x < canvas.width - 50 && t.x > 50) {
+                t.hit = true;
+                score += 100 * (combo + 1);
+                combo++;
+              }
+            });
+          }
+        } else {
+          detectedNote = null;
+          detectedNoteEl.textContent = '—';
+        }
+      }
+
+      // Update targets
+      targets = targets.filter(t => {
+        t.x -= t.speed;
+        if (t.x < -50) {
+          if (!t.hit) {
+            lives--;
+            combo = 0;
+            if (lives <= 0) {
+              endGame();
+              return false;
+            }
+          }
+          return false;
+        }
+        return true;
+      });
+
+      // Draw
+      const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      gradient.addColorStop(0, '#0a0a2e');
+      gradient.addColorStop(1, '#1a0a3e');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Lanes
+      for (let i = 0; i < 4; i++) {
+        const y = i * laneHeight;
+        ctx.fillStyle = LANE_COLORS[i];
+        ctx.fillRect(0, y, canvas.width, laneHeight);
+        
+        ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, y + laneHeight);
+        ctx.lineTo(canvas.width, y + laneHeight);
+        ctx.stroke();
+        
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        ctx.font = 'bold 24px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(GAME_NOTES[i], 25, y + laneHeight / 2);
+      }
+
+      // Hit zone
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+      ctx.fillRect(50, 0, 100, canvas.height);
+      ctx.strokeStyle = '#ff00ff';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(50, 0, 100, canvas.height);
+
+      // Targets
+      targets.forEach(t => {
+        if (t.hit) {
+          ctx.fillStyle = '#ffff00';
+          ctx.beginPath();
+          ctx.arc(t.x, t.y, 35, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 20px monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('✓', t.x, t.y);
+        } else {
+          ctx.fillStyle = NOTE_COLORS[t.note];
+          ctx.beginPath();
+          ctx.arc(t.x, t.y, 25, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 3;
+          ctx.stroke();
+          
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 18px monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(t.note, t.x, t.y);
+        }
+      });
+
+      // HUD
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 18px monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(`SCORE: ${score}`, 160, 25);
+      ctx.fillText(`COMBO: x${combo + 1}`, 160, 50);
+      
+      ctx.textAlign = 'right';
+      const hearts = '♥'.repeat(lives) + '♡'.repeat(3 - lives);
+      ctx.fillText(hearts, canvas.width - 10, 25);
+
+      animationId = requestAnimationFrame(gameLoop);
+    }
+  </script>
+</body>
+</html>
