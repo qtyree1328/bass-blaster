@@ -379,7 +379,7 @@
     <div class="instructions">
       PLAY NOTES ON YOUR BASS TO KILL MONSTERS<br>
       ACCURACY COMBO STREAKS GIVE HIGHER SCORES<br>
-      <span class="mic-info">USES YOUR MICROPHONE TO DETECT BASS NOTES!</span>
+      <span class="mic-info">LATER WAVES: CHORD MONSTERS REQUIRE ROOT + 3RD!</span>
     </div>
     <button id="start-btn" class="game-btn">🎸 START GAME</button>
   </div>
@@ -403,7 +403,7 @@
     
     // Bass-focused scales (lower octaves)
     const SCALES = {
-      'E STANDARD':   { root: 4, intervals: [0,2,4,5,7,9,11], flats: false },  // E F# G# A B C# D#
+      'E STANDARD':   { root: 4, intervals: [0,2,4,5,7,9,11], flats: false },
       'E MINOR':      { root: 4, intervals: [0,2,3,5,7,8,10], flats: false },
       'A MINOR':      { root: 9, intervals: [0,2,3,5,7,8,10], flats: false },
       'G MAJOR':      { root: 7, intervals: [0,2,4,5,7,9,11], flats: false },
@@ -415,6 +415,13 @@
     };
     
     const SCALE_NAMES = Object.keys(SCALES);
+    
+    // Chord quality based on interval from root to 3rd
+    // Major 3rd = 4 semitones, Minor 3rd = 3 semitones
+    const CHORD_QUALITIES = {
+      4: '', // Major (no suffix)
+      3: 'm', // Minor
+    };
     
     const NOTE_COLORS = {
       C: '#ff3366', 'C#': '#ff5588', Db: '#ff5588', D: '#ff8800', 'D#': '#ffaa33', Eb: '#ffaa33',
@@ -440,7 +447,7 @@
     
     const SPRITE_MAP = { Db:'C#', Eb:'D#', Gb:'F#', Ab:'G#', Bb:'A#' };
     
-    // Bass guitar sprite (simple)
+    // Bass guitar sprite
     const BASS_SPRITE = [
       [0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0],
       [0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0],
@@ -460,7 +467,6 @@
       [0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0]
     ];
     
-    // Frequency to MIDI conversion
     const A4_FREQ = 440;
     const A4_MIDI = 69;
     
@@ -480,8 +486,7 @@
       scale: 'E STANDARD', bpm: 80,
       enemies: [], particles: [], lightning: [],
       lastBeat: 0, beatCount: 0, lastSpawn: 0, waveRemaining: 0,
-      shake: 0, heldNotes: new Set(),
-      noteHoldTimes: new Map()
+      shake: 0, heldNotes: new Set()
     };
     
     let player = { x: 0, y: 0 };
@@ -498,9 +503,8 @@
       analyzer: null,
       lastDetectedNote: null,
       lastDetectedTime: 0,
-      noteHoldStart: null,
       rms: 0,
-      minRmsThreshold: 0.02,  // Lower threshold for bass
+      minRmsThreshold: 0.02,
       minCorrelation: 0.5,
       noteDebounceTime: 100,
       noteOffDebounceTime: 300,
@@ -517,7 +521,6 @@
     // UTILITIES
     // ═══════════════════════════════════════════════════════════════
     
-    const lerp = (a, b, t) => a + (b - a) * t;
     const hypot = (x, y) => Math.sqrt(x*x + y*y);
     const rand = (min=0, max=1) => Math.random() * (max - min) + min;
     const pick = arr => arr[Math.floor(Math.random() * arr.length)];
@@ -558,10 +561,6 @@
     function freqToMidi(freq) {
       if (freq <= 0) return null;
       return Math.round(12 * Math.log2(freq / A4_FREQ) + A4_MIDI);
-    }
-    
-    function midiToFreq(midi) {
-      return A4_FREQ * Math.pow(2, (midi - A4_MIDI) / 12);
     }
     
     // ═══════════════════════════════════════════════════════════════
@@ -653,7 +652,6 @@
       const confidence = 1 - yinBuffer[tauEstimate];
       micState.lastConfidence = confidence;
       
-      // Bass frequency range: ~30Hz to ~400Hz
       if (frequency < 30 || frequency > 400) {
         return { frequency: -1, confidence: 0 };
       }
@@ -791,7 +789,6 @@
             }
             
             if (midi !== micState.lastDetectedNote) {
-              micState.noteHoldStart = now;
               onNoteOn(midi);
             }
             
@@ -999,7 +996,6 @@
       const scale = SCALES[state.scale];
       const names = NOTE_NAMES[scale.flats ? 'flat' : 'sharp'];
       const notes = [];
-      // Bass range: octaves 1-3 (lower than piano)
       for (let oct = 1; oct <= 3; oct++) {
         for (const interval of scale.intervals) {
           notes.push({
@@ -1010,6 +1006,47 @@
         }
       }
       return notes;
+    }
+    
+    // Generate a chord (root + 3rd) from the current scale
+    function generateChord() {
+      const scale = SCALES[state.scale];
+      const names = NOTE_NAMES[scale.flats ? 'flat' : 'sharp'];
+      const intervals = scale.intervals;
+      
+      // Pick a random scale degree as root (0-indexed position in scale)
+      const rootDegree = Math.floor(rand(0, intervals.length));
+      const thirdDegree = (rootDegree + 2) % intervals.length; // 3rd is 2 scale degrees up
+      
+      const baseOctave = Math.floor(rand(1, 3));
+      
+      // Calculate MIDI notes
+      const rootInterval = intervals[rootDegree];
+      const thirdInterval = intervals[thirdDegree];
+      
+      const rootMidi = (baseOctave + 1) * 12 + scale.root + rootInterval;
+      let thirdMidi = (baseOctave + 1) * 12 + scale.root + thirdInterval;
+      
+      // If third is lower than root (wrapped around), bump it up an octave
+      if (thirdMidi <= rootMidi) {
+        thirdMidi += 12;
+      }
+      
+      const rootName = names[(scale.root + rootInterval) % 12];
+      const thirdName = names[(scale.root + thirdInterval) % 12];
+      
+      // Determine chord quality (major or minor) based on interval
+      const semitones = thirdMidi - rootMidi;
+      const quality = CHORD_QUALITIES[semitones] || '';
+      const chordName = rootName + quality;
+      
+      return {
+        chordName,
+        notes: [
+          { name: rootName, midi: rootMidi, hit: false },
+          { name: thirdName, midi: thirdMidi, hit: false }
+        ]
+      };
     }
     
     function spawnEnemy() {
@@ -1025,33 +1062,52 @@
       else if (side === 2) { x = rand(0, canvas.width); y = canvas.height + margin; }
       else { x = -margin; y = rand(0, canvas.height); }
 
+      // Determine enemy type: chord enemies start appearing at wave 4
       let type = 'normal';
-      if (state.wave >= 5) {
-        const roll = rand();
-        if (roll < 0.1) type = 'hold';
-        else if (roll < 0.25) type = 'fast';
-      } else if (state.wave >= 3) {
-        if (rand() < 0.15) type = 'fast';
+      if (state.wave >= 4) {
+        // Increasing chance of chord enemies as waves progress
+        const chordChance = Math.min(0.4, 0.15 + (state.wave - 4) * 0.05);
+        if (rand() < chordChance) {
+          type = 'chord';
+        } else if (rand() < 0.2) {
+          type = 'fast';
+        }
+      } else if (state.wave >= 2 && rand() < 0.15) {
+        type = 'fast';
       }
 
-      const noteData = pick(getScaleNotes());
-
-      state.enemies.push({
-        x, y,
-        note: noteData.name,
-        midi: noteData.midi,
-        octave: noteData.octave,
-        speed: type === 'fast' ? speed * 1.8 : speed,
-        size: 40,
-        health: 1,
-        color: NOTE_COLORS[noteData.name],
-        pulsePhase: rand(0, Math.PI * 2),
-        type,
-        holdDuration: type === 'hold' ? rand(500, 1500) : 0,
-        holdProgress: 0,
-        isBeingHeld: false,
-        trail: []
-      });
+      if (type === 'chord') {
+        const chord = generateChord();
+        state.enemies.push({
+          x, y,
+          type: 'chord',
+          chordName: chord.chordName,
+          notes: chord.notes,
+          note: chord.notes[0].name, // Primary note for color
+          speed: speed * 0.7, // Chord enemies are slower
+          size: 50,
+          health: 1,
+          color: NOTE_COLORS[chord.notes[0].name],
+          pulsePhase: rand(0, Math.PI * 2),
+          chordProgress: 0,
+          chordWindowMs: 1500, // Time window to complete chord
+          chordStartTime: null
+        });
+      } else {
+        const noteData = pick(getScaleNotes());
+        state.enemies.push({
+          x, y,
+          type,
+          note: noteData.name,
+          midi: noteData.midi,
+          octave: noteData.octave,
+          speed: type === 'fast' ? speed * 1.8 : speed,
+          size: 40,
+          health: 1,
+          color: NOTE_COLORS[noteData.name],
+          pulsePhase: rand(0, Math.PI * 2)
+        });
+      }
 
       state.waveRemaining--;
     }
@@ -1089,12 +1145,15 @@
       const [sharp, flat] = getNoteNames(midi);
       state.heldNotes.add(sharp).add(flat);
 
-      const now = performance.now();
-      if (!state.noteHoldTimes.has(sharp)) state.noteHoldTimes.set(sharp, now);
-      if (!state.noteHoldTimes.has(flat)) state.noteHoldTimes.set(flat, now);
-
+      // Check if note matches any enemy
       const onScreen = new Set();
-      state.enemies.forEach(e => onScreen.add(e.note));
+      state.enemies.forEach(e => {
+        if (e.type === 'chord' && e.notes) {
+          e.notes.forEach(n => onScreen.add(n.name));
+        } else {
+          onScreen.add(e.note);
+        }
+      });
 
       if (!onScreen.has(sharp) && !onScreen.has(flat)) {
         state.combo = 0;
@@ -1105,7 +1164,9 @@
         return;
       }
 
-      // Find matching enemies
+      // PRIORITY: Single note enemies first, then chord enemies
+      
+      // Check single-note enemies (normal and fast)
       const singleNoteEnemies = state.enemies
         .filter(e => (e.type === 'normal' || e.type === 'fast') && (e.note === sharp || e.note === flat))
         .sort((a, b) => hypot(a.x - player.x, a.y - player.y) - hypot(b.x - player.x, b.y - player.y));
@@ -1131,21 +1192,51 @@
         return;
       }
 
-      // Check hold enemies
-      const holdEnemies = state.enemies
-        .filter(e => e.type === 'hold' && (e.note === sharp || e.note === flat))
-        .sort((a, b) => hypot(a.x - player.x, a.y - player.y) - hypot(b.x - player.x, b.y - player.y));
+      // Check chord enemies
+      const chordEnemies = state.enemies.filter(e =>
+        e.type === 'chord' && e.notes &&
+        e.notes.some(n => (n.name === sharp || n.name === flat) && !n.hit)
+      );
 
-      if (holdEnemies.length > 0) {
-        const enemy = holdEnemies[0];
-        if (!enemy.isBeingHeld) {
-          enemy.isBeingHeld = true;
+      if (chordEnemies.length > 0) {
+        // Prioritize chords already in progress, then by distance
+        const enemy = chordEnemies.sort((a, b) => {
+          if (a.chordProgress > 0 && b.chordProgress === 0) return -1;
+          if (b.chordProgress > 0 && a.chordProgress === 0) return 1;
+          return hypot(a.x - player.x, a.y - player.y) - hypot(b.x - player.x, b.y - player.y);
+        })[0];
+
+        // Mark the note as hit
+        const hitNote = enemy.notes.find(n => (n.name === sharp || n.name === flat) && !n.hit);
+        if (hitNote) {
+          hitNote.hit = true;
+          enemy.chordProgress++;
           playHit(midi);
-          checkComboMilestone(state.combo++);
-          state.maxCombo = Math.max(state.maxCombo, state.combo);
-          updateUI();
-          return;
+          spawnParticles(enemy.x, enemy.y, NOTE_COLORS[hitNote.name], 8, [2, 5], 0.04);
+
+          // Start chord window timer on first note
+          if (enemy.chordProgress === 1) {
+            enemy.chordStartTime = performance.now();
+          }
+
+          // Check if chord is complete
+          if (enemy.notes.every(n => n.hit)) {
+            checkComboMilestone(state.combo++);
+            state.maxCombo = Math.max(state.maxCombo, state.combo);
+
+            const mult = 1 + Math.floor(state.combo / 5) * 0.5;
+            const pts = Math.floor((100 + state.wave * 15) * mult);
+            state.score += pts;
+
+            spawnLightning(enemy.x, enemy.y);
+            spawnDamageText(enemy.x, enemy.y, `+${pts} ${enemy.chordName}!`, '#f0f');
+            spawnParticles(enemy.x, enemy.y, enemy.color, 30, [3, 10], 0.012);
+            state.enemies = state.enemies.filter(e => e !== enemy);
+            state.shake = 15;
+          }
         }
+        updateUI();
+        return;
       }
 
       updateUI();
@@ -1156,20 +1247,6 @@
       const [sharp, flat] = getNoteNames(midi);
       state.heldNotes.delete(sharp);
       state.heldNotes.delete(flat);
-      state.noteHoldTimes.delete(sharp);
-      state.noteHoldTimes.delete(flat);
-      
-      state.enemies.forEach(e => {
-        if (e.type === 'hold' && (e.note === sharp || e.note === flat) && e.isBeingHeld && e.holdProgress < e.holdDuration) {
-          e.isBeingHeld = false;
-          e.holdProgress = 0;
-          state.combo = 0;
-          showWrongNote();
-          playMiss();
-          state.shake = 8;
-          updateUI();
-        }
-      });
     }
     
     function checkComboMilestone(prev) {
@@ -1231,7 +1308,6 @@
         waveTransition: false, waveRemaining: 0
       });
       state.heldNotes.clear();
-      state.noteHoldTimes.clear();
       startWave();
       requestAnimationFrame(loop);
     }
@@ -1280,50 +1356,29 @@
         spawnEnemy();
         state.lastSpawn = 0;
       }
-      
-      const holdActivationThreshold = 300;
-      state.noteHoldTimes.forEach((startTime, noteName) => {
-        const holdDuration = now - startTime;
-        if (holdDuration >= holdActivationThreshold) {
-          const holdEnemy = state.enemies.find(e =>
-            e.type === 'hold' &&
-            !e.isBeingHeld &&
-            e.note === noteName
-          );
-          if (holdEnemy) {
-            holdEnemy.isBeingHeld = true;
-            playHit(holdEnemy.midi);
-            spawnParticles(holdEnemy.x, holdEnemy.y, holdEnemy.color, 5, [2, 4], 0.04);
-          }
-        }
-      });
 
+      // Update enemies
       state.enemies.forEach(e => {
-        if (e.type === 'hold') {
-          e.trail.unshift({ x: e.x, y: e.y });
-          while (e.trail.length > e.holdDuration / 16) e.trail.pop();
-
-          if (e.isBeingHeld && state.heldNotes.has(e.note)) {
-            e.holdProgress += dt;
-            if (e.holdProgress >= e.holdDuration) {
-              const mult = 1 + Math.floor(state.combo / 5) * 0.5;
-              const pts = Math.floor((75 + state.wave * 15) * mult);
-              state.score += pts;
-              spawnLightning(e.x, e.y);
-              spawnParticles(e.x, e.y, e.color, 20, [2, 8], 0.015);
-              spawnDamageText(e.x, e.y, `+${pts} HELD!`, '#0fc');
-              e.health = 0;
-            }
-          } else if (e.isBeingHeld) {
-            e.isBeingHeld = false;
-            e.holdProgress = 0;
+        // Chord timeout check
+        if (e.type === 'chord' && e.chordProgress > 0 && e.chordStartTime) {
+          const elapsed = now - e.chordStartTime;
+          if (elapsed > e.chordWindowMs) {
+            // Chord timed out - reset progress
+            e.notes.forEach(n => n.hit = false);
+            e.chordProgress = 0;
+            e.chordStartTime = null;
+            state.combo = 0;
+            showWrongNote();
+            playMiss();
+            state.shake = 8;
+            spawnDamageText(e.x, e.y, 'TIMEOUT!', '#f00');
           }
         }
 
         const dx = player.x - e.x, dy = player.y - e.y;
         const dist = hypot(dx, dy);
         let speedMod = 1;
-        if (e.type === 'hold' && e.isBeingHeld) speedMod = 0.3;
+        if (e.type === 'chord' && e.chordProgress > 0) speedMod = 0.5;
 
         if (dist > 0) {
           e.x += (dx / dist) * e.speed * speedMod;
@@ -1332,9 +1387,10 @@
         e.pulsePhase += 0.1;
 
         const sizeScale = Math.min(1, Math.max(0.7, canvas.width / 800));
-        const collisionRadius = e.size * sizeScale + 25;
+        const collisionRadius = e.type === 'chord' ? e.size * sizeScale + 30 : e.size * sizeScale + 25;
         if (dist < collisionRadius) {
-          state.health -= 10;
+          const damage = e.type === 'chord' ? 15 : 10;
+          state.health -= damage;
           state.shake = 20;
           spawnParticles(e.x, e.y, '#f00', 20, [2, 8], 0.015);
           e.health = 0;
@@ -1402,45 +1458,45 @@
       // Enemies
       const uiScale = getUIScale();
       state.enemies.forEach(e => {
-        if (e.type === 'hold' && e.trail.length > 1) {
-          ctx.save();
-          ctx.lineCap = ctx.lineJoin = 'round';
-          [[30, 40, 0.3], [20, 25, 0.5], [15, 12, 0.9], [0, 4, 1]].forEach(([blur, width, alpha]) => {
-            ctx.shadowColor = '#fff'; ctx.shadowBlur = blur * uiScale;
-            ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
-            ctx.lineWidth = width * uiScale;
-            ctx.beginPath(); ctx.moveTo(e.x, e.y);
-            e.trail.forEach(p => ctx.lineTo(p.x, p.y));
-            ctx.stroke();
-          });
-          ctx.restore();
-        }
-
         ctx.save();
         ctx.translate(e.x, e.y);
         const baseSize = e.size * uiScale;
         const pulse = baseSize + Math.sin(e.pulsePhase) * 3 * uiScale;
         const px = Math.floor(pulse / 6);
         
-        if (e.isBeingHeld) {
-          const r = pulse * 1.2;
-          ctx.strokeStyle = '#0fc'; ctx.lineWidth = 4;
-          ctx.shadowColor = '#0fc'; ctx.shadowBlur = 20;
-          ctx.beginPath(); ctx.arc(0, 0, r + Math.sin(e.pulsePhase * 3) * 5, 0, Math.PI * 2); ctx.stroke();
-          ctx.strokeStyle = '#fff'; ctx.lineWidth = 6;
-          ctx.beginPath(); ctx.arc(0, 0, r + 8, -Math.PI/2, -Math.PI/2 + (e.holdProgress/e.holdDuration) * Math.PI * 2); ctx.stroke();
-          ctx.shadowBlur = 0;
+        if (e.type === 'chord') {
+          // Multi-colored glow for chord enemies
+          const glowRadius = pulse * 1.6;
+          const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, glowRadius);
+          glow.addColorStop(0, '#ffffcc');
+          glow.addColorStop(0.3, e.color + 'aa');
+          glow.addColorStop(0.6, 'rgba(255, 0, 255, 0.4)');
+          glow.addColorStop(1, 'transparent');
+          ctx.fillStyle = glow;
+          ctx.beginPath();
+          ctx.arc(0, 0, glowRadius, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Pulsing outer ring
+          ctx.strokeStyle = '#f0f';
+          ctx.lineWidth = 2;
+          ctx.globalAlpha = 0.3 + Math.sin(e.pulsePhase * 2) * 0.2;
+          ctx.beginPath();
+          ctx.arc(0, 0, pulse * 1.3 + Math.sin(e.pulsePhase) * 5, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        } else {
+          const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, pulse * 1.4);
+          glow.addColorStop(0, e.color + 'cc');
+          glow.addColorStop(0.5, e.color + '66');
+          glow.addColorStop(1, 'transparent');
+          ctx.fillStyle = glow;
+          ctx.beginPath();
+          ctx.arc(0, 0, pulse * 1.4, 0, Math.PI * 2);
+          ctx.fill();
         }
         
-        const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, pulse * 1.4);
-        glow.addColorStop(0, e.color + 'cc');
-        glow.addColorStop(0.5, e.color + '66');
-        glow.addColorStop(1, 'transparent');
-        ctx.fillStyle = glow;
-        ctx.beginPath();
-        ctx.arc(0, 0, pulse * 1.4, 0, Math.PI * 2);
-        ctx.fill();
-        
+        // Sprite
         const spriteKey = SPRITE_MAP[e.note] || e.note;
         const sprite = SPRITES[spriteKey] || SPRITES.C;
         ctx.globalAlpha = 0.5;
@@ -1449,45 +1505,68 @@
         ctx.shadowColor = e.color; ctx.shadowBlur = 6;
         drawSprite(sprite, 0, 0, px, adjustColor(e.color, 0.15), e.color);
         ctx.shadowBlur = 0;
-
-        if (e.type === 'hold') {
-          ctx.strokeStyle = '#fff';
-          ctx.lineWidth = 3 * uiScale;
-          ctx.shadowColor = '#fff';
-          ctx.shadowBlur = 8 * uiScale;
-          ctx.beginPath();
-          ctx.arc(0, 0, pulse + 6 * uiScale, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.shadowBlur = 0;
-        }
-
-        if (e.type === 'hold' && !e.isBeingHeld) {
-          const bw = pulse * 2, bh = 8 * uiScale, by = pulse * 0.9;
-          ctx.fillStyle = '#222'; ctx.fillRect(-bw/2, by, bw, bh);
-          ctx.strokeStyle = '#fff'; ctx.lineWidth = 2 * uiScale; ctx.strokeRect(-bw/2, by, bw, bh);
-          ctx.font = `bold ${Math.round(22 * uiScale)}px "Syne Mono"`;
-          ctx.textAlign = 'center';
-          ctx.shadowColor = '#fff'; ctx.shadowBlur = 12 * uiScale;
-          ctx.strokeStyle = '#000'; ctx.lineWidth = 3 * uiScale;
-          ctx.strokeText('HOLD', 0, by + bh + 20 * uiScale);
-          ctx.fillStyle = '#fff';
-          ctx.fillText('HOLD', 0, by + bh + 20 * uiScale);
-          ctx.shadowBlur = 0;
-        }
         
-        ctx.font = `bold ${Math.round(36 * uiScale)}px "Syne Mono"`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.shadowColor = e.color;
-        ctx.shadowBlur = 18 * uiScale;
-        ctx.strokeStyle = '#000';
-        ctx.lineWidth = 4 * uiScale;
-        ctx.strokeText(e.note, 0, -pulse - 25 * uiScale);
-        ctx.fillStyle = '#fff';
-        ctx.fillText(e.note, 0, -pulse - 25 * uiScale);
+        // Labels
+        if (e.type === 'chord' && e.notes) {
+          // Chord name at top
+          const labelY = -pulse - 45 * uiScale;
+          
+          ctx.font = `bold ${Math.round(28 * uiScale)}px "Syne Mono"`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = '#f0f';
+          ctx.shadowColor = '#f0f';
+          ctx.shadowBlur = 15 * uiScale;
+          ctx.strokeStyle = '#000';
+          ctx.lineWidth = 3 * uiScale;
+          ctx.strokeText(e.chordName, 0, labelY);
+          ctx.fillText(e.chordName, 0, labelY);
+
+          // Individual notes below chord name
+          const noteY = labelY + 30 * uiScale;
+          const noteSpacing = 40 * uiScale;
+          const startX = -noteSpacing / 2;
+
+          e.notes.forEach((n, i) => {
+            const nx = startX + i * noteSpacing;
+            const noteColor = NOTE_COLORS[n.name];
+            const circleRadius = 16 * uiScale;
+
+            // Background circle
+            ctx.beginPath();
+            ctx.arc(nx, noteY, circleRadius, 0, Math.PI * 2);
+            ctx.fillStyle = n.hit ? noteColor : 'rgba(0,0,0,0.7)';
+            ctx.fill();
+            ctx.strokeStyle = n.hit ? '#fff' : noteColor;
+            ctx.lineWidth = 2 * uiScale;
+            ctx.stroke();
+
+            // Note name
+            ctx.font = `bold ${Math.round(18 * uiScale)}px "Syne Mono"`;
+            ctx.fillStyle = n.hit ? '#000' : '#fff';
+            ctx.shadowColor = n.hit ? '#fff' : noteColor;
+            ctx.shadowBlur = (n.hit ? 15 : 8) * uiScale;
+            ctx.fillText(n.name, nx, noteY + 1);
+          });
+          ctx.shadowBlur = 0;
+
+        } else {
+          // Single note label
+          ctx.font = `bold ${Math.round(36 * uiScale)}px "Syne Mono"`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.shadowColor = e.color;
+          ctx.shadowBlur = 18 * uiScale;
+          ctx.strokeStyle = '#000';
+          ctx.lineWidth = 4 * uiScale;
+          ctx.strokeText(e.note, 0, -pulse - 25 * uiScale);
+          ctx.fillStyle = '#fff';
+          ctx.fillText(e.note, 0, -pulse - 25 * uiScale);
+        }
         ctx.restore();
       });
       
+      // Particles
       state.particles.forEach(p => {
         ctx.globalAlpha = p.life;
         ctx.fillStyle = p.color;
@@ -1495,6 +1574,7 @@
       });
       ctx.globalAlpha = 1;
       
+      // Lightning
       state.lightning.forEach(l => {
         if (l.points.length < 2) return;
         ctx.save();
