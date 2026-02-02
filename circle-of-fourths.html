@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>CIRCLE OF 4THS</title>
+  <meta name="description" content="Navigate the circle of fourths on bass">
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Syne+Mono&display=swap');
+    
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      background: linear-gradient(135deg, #0a0a1a 0%, #1a0a2e 50%, #0a1a2a 100%);
+      min-height: 100vh;
+      color: #fff;
+      font-family: 'Syne Mono', monospace;
+      overflow-x: hidden;
+    }
+    
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 15px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      margin-bottom: 30px;
+    }
+    
+    .back-btn {
+      color: rgba(255,255,255,0.6);
+      text-decoration: none;
+      font-size: 0.9rem;
+      transition: color 0.2s;
+    }
+    
+    .back-btn:hover { color: #ff8800; }
+    
+    h1 {
+      font-size: 1.5rem;
+      background: linear-gradient(135deg, #ff8800, #ff00aa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    
+    .midi-status {
+      font-size: 0.8rem;
+      color: rgba(255,255,255,0.5);
+    }
+    
+    .midi-status.connected { color: #00ff66; }
+    
+    /* Start Selection */
+    .start-select {
+      text-align: center;
+      padding: 60px 20px;
+    }
+    
+    .start-select h2 {
+      font-size: 2rem;
+      margin-bottom: 10px;
+      color: #ff8800;
+    }
+    
+    .start-select p {
+      color: rgba(255,255,255,0.6);
+      margin-bottom: 10px;
+    }
+    
+    .start-select .circle-preview {
+      color: rgba(255,255,255,0.4);
+      font-size: 0.85rem;
+      margin-bottom: 30px;
+    }
+    
+    .key-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      max-width: 400px;
+      margin: 0 auto;
+    }
+    
+    .key-btn {
+      background: rgba(255,255,255,0.05);
+      border: 2px solid rgba(255,255,255,0.2);
+      border-radius: 12px;
+      padding: 18px;
+      font-size: 1.3rem;
+      color: #ff8800;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .key-btn:hover {
+      background: rgba(255,136,0,0.1);
+      border-color: #ff8800;
+      transform: scale(1.05);
+    }
+    
+    /* Game Screen */
+    .game-screen { display: none; }
+    .game-screen.active { display: block; }
+    
+    /* Circle visualization */
+    .circle-container {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 30px;
+    }
+    
+    .circle-svg {
+      max-width: 100%;
+      height: auto;
+    }
+    
+    /* Current note display */
+    .note-display {
+      text-align: center;
+      background: rgba(0,0,0,0.3);
+      border-radius: 20px;
+      padding: 40px;
+      margin-bottom: 30px;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    
+    .note-label {
+      font-size: 0.9rem;
+      color: rgba(255,255,255,0.5);
+      margin-bottom: 10px;
+    }
+    
+    .current-note {
+      font-size: 5rem;
+      font-weight: bold;
+      color: #fff;
+      transition: all 0.2s;
+    }
+    
+    .current-note.correct {
+      color: #00ff66;
+      transform: scale(1.1);
+    }
+    
+    .next-note {
+      color: rgba(255,255,255,0.5);
+      font-size: 1rem;
+      margin-top: 15px;
+    }
+    
+    /* Fretboard */
+    .fretboard-container {
+      overflow-x: auto;
+      padding: 10px 0 20px;
+      margin-bottom: 20px;
+    }
+    
+    .fretboard {
+      background: linear-gradient(180deg, #3d2817 0%, #2a1a0f 100%);
+      border-radius: 12px;
+      padding: 20px;
+      min-width: 800px;
+      border: 2px solid rgba(255,255,255,0.1);
+    }
+    
+    .fret-row {
+      display: flex;
+      align-items: center;
+      height: 40px;
+      position: relative;
+    }
+    
+    .string-label {
+      width: 30px;
+      font-size: 0.9rem;
+      color: rgba(255,255,255,0.7);
+      font-weight: bold;
+    }
+    
+    .frets {
+      display: flex;
+      flex: 1;
+      position: relative;
+    }
+    
+    .fret {
+      width: 60px;
+      height: 100%;
+      border-right: 2px solid #888;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .fret:first-child {
+      border-right: 4px solid #f5f5dc;
+      width: 30px;
+    }
+    
+    .string-line {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, #ccc, #888);
+      top: 50%;
+      transform: translateY(-50%);
+    }
+    
+    .fret-row:nth-child(1) .string-line { height: 4px; background: #ddd; }
+    .fret-row:nth-child(2) .string-line { height: 3.5px; }
+    .fret-row:nth-child(3) .string-line { height: 3px; background: #aaa; }
+    .fret-row:nth-child(4) .string-line { height: 2.5px; background: #999; }
+    
+    .note-marker {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: bold;
+      position: relative;
+      z-index: 10;
+      background: #ff8800;
+      color: #000;
+      transition: all 0.2s;
+    }
+    
+    .note-marker.played {
+      background: #00ff66 !important;
+      box-shadow: 0 0 15px #00ff66;
+      transform: scale(1.2);
+    }
+    
+    .fret-numbers {
+      display: flex;
+      padding-left: 30px;
+      margin-top: 10px;
+    }
+    
+    .fret-num {
+      width: 60px;
+      text-align: center;
+      font-size: 0.75rem;
+      color: rgba(255,255,255,0.4);
+    }
+    
+    .fret-num:first-child { width: 30px; }
+    
+    .fret-markers {
+      display: flex;
+      padding-left: 30px;
+      margin-top: 5px;
+    }
+    
+    .fret-marker-dot {
+      width: 60px;
+      display: flex;
+      justify-content: center;
+    }
+    
+    .fret-marker-dot:first-child { width: 30px; }
+    
+    .fret-marker-dot span {
+      width: 8px;
+      height: 8px;
+      background: rgba(255,255,255,0.2);
+      border-radius: 50%;
+    }
+    
+    .fret-marker-dot.twelve span {
+      width: 10px;
+      height: 10px;
+    }
+    
+    /* Controls */
+    .controls {
+      display: flex;
+      justify-content: center;
+      gap: 15px;
+      flex-wrap: wrap;
+    }
+    
+    .control-btn {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 10px;
+      padding: 12px 24px;
+      color: rgba(255,255,255,0.8);
+      font-family: inherit;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .control-btn:hover {
+      background: rgba(255,255,255,0.1);
+      border-color: rgba(255,255,255,0.4);
+    }
+    
+    .control-btn.primary {
+      background: linear-gradient(135deg, #ff8800, #ff00aa);
+      border: none;
+      color: #fff;
+    }
+    
+    .control-btn.primary:hover {
+      transform: scale(1.05);
+    }
+    
+    /* Toggle */
+    .toggle-row {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 20px;
+      color: rgba(255,255,255,0.6);
+      font-size: 0.85rem;
+    }
+    
+    .toggle-row input {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+    }
+    
+    /* Complete screen */
+    .complete-screen {
+      display: none;
+      text-align: center;
+      padding: 60px 20px;
+    }
+    
+    .complete-screen.active { display: block; }
+    
+    .complete-screen h2 {
+      font-size: 3rem;
+      color: #00ff66;
+      margin-bottom: 20px;
+    }
+    
+    .complete-screen p {
+      color: rgba(255,255,255,0.7);
+      font-size: 1.2rem;
+      margin-bottom: 30px;
+    }
+    
+    .complete-buttons {
+      display: flex;
+      justify-content: center;
+      gap: 15px;
+    }
+    
+    /* Keyboard hint */
+    .keyboard-hint {
+      text-align: center;
+      color: rgba(255,255,255,0.3);
+      font-size: 0.75rem;
+      margin-top: 20px;
+    }
+    
+    .hidden { display: none !important; }
+  </style>
+  <link rel="icon" type="image/png" href="favicon.png">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <a href="index.html" class="back-btn">← Back</a>
+      <h1>🔄 CIRCLE OF 4THS</h1>
+      <span id="midiStatus" class="midi-status">No MIDI</span>
+    </header>
+
+    <!-- Start Selection -->
+    <div id="startSelect" class="start-select">
+      <h2>Choose Starting Note</h2>
+      <p>Navigate the circle of fourths</p>
+      <p class="circle-preview">C → F → B♭ → E♭ → A♭ → D♭ → G♭ → B → E → A → D → G → C</p>
+      <div class="key-grid" id="keyGrid"></div>
+    </div>
+
+    <!-- Game Screen -->
+    <div id="gameScreen" class="game-screen">
+      <!-- Circle visualization -->
+      <div class="circle-container">
+        <svg class="circle-svg" width="320" height="320" viewBox="-160 -160 320 320" id="circleSvg"></svg>
+      </div>
+
+      <!-- Current note -->
+      <div class="note-display">
+        <p class="note-label">Play this note:</p>
+        <h2 class="current-note" id="currentNote">C</h2>
+        <p class="next-note" id="nextNote">Next: F</p>
+      </div>
+
+      <!-- Fretboard -->
+      <div class="fretboard-container">
+        <div class="fretboard" id="fretboard"></div>
+      </div>
+
+      <!-- Toggle -->
+      <div class="toggle-row">
+        <input type="checkbox" id="showAllPositions" checked>
+        <label for="showAllPositions">Show all fret positions</label>
+      </div>
+
+      <!-- Controls -->
+      <div class="controls">
+        <button class="control-btn" onclick="changeStart()">Change Start</button>
+        <button class="control-btn" onclick="resetGame()">Restart</button>
+      </div>
+
+      <p class="keyboard-hint" id="keyboardHint">
+        No MIDI detected. Keyboard: A=C, W=C#, S=D, E=D#, D=E, F=F, T=F#, G=G, Y=G#, H=A, U=A#, J=B
+      </p>
+    </div>
+
+    <!-- Complete Screen -->
+    <div id="completeScreen" class="complete-screen">
+      <h2>🎉 FULL CIRCLE!</h2>
+      <p>You completed the circle of 4ths from <span id="completedStart">C</span>!</p>
+      <div class="complete-buttons">
+        <button class="control-btn primary" onclick="resetGame()">Play Again</button>
+        <button class="control-btn" onclick="changeStart()">New Start</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Music theory
+    const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+    const FLAT_NAMES = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
+    const CIRCLE_OF_FOURTHS = ['C', 'F', 'Bb', 'Eb', 'Ab', 'Db', 'Gb', 'B', 'E', 'A', 'D', 'G'];
+    const BASS_OPEN_STRINGS = [28, 33, 38, 43];
+    const STRING_NAMES = ['E', 'A', 'D', 'G'];
+    const FRET_COUNT = 12;
+
+    // State
+    let startNote = null;
+    let currentIndex = 0;
+    let circle = [];
+    let playedCorrect = false;
+    let midiAccess = null;
+
+    // DOM
+    const startSelect = document.getElementById('startSelect');
+    const gameScreen = document.getElementById('gameScreen');
+    const completeScreen = document.getElementById('completeScreen');
+    const keyGrid = document.getElementById('keyGrid');
+    const circleSvg = document.getElementById('circleSvg');
+    const currentNoteEl = document.getElementById('currentNote');
+    const nextNoteEl = document.getElementById('nextNote');
+    const fretboard = document.getElementById('fretboard');
+    const midiStatus = document.getElementById('midiStatus');
+    const keyboardHint = document.getElementById('keyboardHint');
+    const completedStart = document.getElementById('completedStart');
+    const showAllPositions = document.getElementById('showAllPositions');
+
+    function init() {
+      // Build key grid
+      NOTE_NAMES.forEach(note => {
+        const btn = document.createElement('button');
+        btn.className = 'key-btn';
+        btn.textContent = note;
+        btn.onclick = () => selectStart(note);
+        keyGrid.appendChild(btn);
+      });
+
+      // MIDI
+      if (navigator.requestMIDIAccess) {
+        navigator.requestMIDIAccess().then(access => {
+          midiAccess = access;
+          midiStatus.textContent = '🎸 MIDI Ready';
+          midiStatus.classList.add('connected');
+          keyboardHint.classList.add('hidden');
+          
+          access.inputs.forEach(input => {
+            input.onmidimessage = handleMIDI;
+          });
+          
+          access.onstatechange = () => {
+            access.inputs.forEach(input => {
+              input.onmidimessage = handleMIDI;
+            });
+          };
+        });
+      }
+
+      window.addEventListener('keydown', handleKeyboard);
+      showAllPositions.addEventListener('change', renderFretboard);
+    }
+
+    function getNoteIndex(name) {
+      const clean = name.replace(/[0-9]/g, '');
+      let idx = NOTE_NAMES.indexOf(clean);
+      if (idx === -1) idx = FLAT_NAMES.indexOf(clean);
+      return idx;
+    }
+
+    function getNoteName(midiNote) {
+      return NOTE_NAMES[midiNote % 12];
+    }
+
+    function getCircleFromStart(start) {
+      // Find start in circle (handle sharps)
+      let startIdx = CIRCLE_OF_FOURTHS.indexOf(start);
+      if (startIdx === -1) {
+        const flatIdx = getNoteIndex(start);
+        const flatName = FLAT_NAMES[flatIdx];
+        startIdx = CIRCLE_OF_FOURTHS.indexOf(flatName);
+        if (startIdx === -1) startIdx = 0;
+      }
+      return [...CIRCLE_OF_FOURTHS.slice(startIdx), ...CIRCLE_OF_FOURTHS.slice(0, startIdx)];
+    }
+
+    function getNotePositions(noteName) {
+      const positions = [];
+      const noteIdx = getNoteIndex(noteName);
+      BASS_OPEN_STRINGS.forEach((open, string) => {
+        for (let fret = 0; fret <= FRET_COUNT; fret++) {
+          if ((open + fret) % 12 === noteIdx) {
+            positions.push({ string, fret });
+          }
+        }
+      });
+      return positions;
+    }
+
+    function selectStart(note) {
+      startNote = note;
+      circle = getCircleFromStart(note);
+      currentIndex = 0;
+      playedCorrect = false;
+      
+      startSelect.style.display = 'none';
+      completeScreen.classList.remove('active');
+      gameScreen.classList.add('active');
+      
+      renderCircle();
+      renderNote();
+      renderFretboard();
+    }
+
+    function renderCircle() {
+      let html = '';
+      
+      circle.forEach((note, i) => {
+        const angle = (i * 30 - 90) * (Math.PI / 180);
+        const x = Math.cos(angle) * 120;
+        const y = Math.sin(angle) * 120;
+        const isActive = i === currentIndex;
+        const isPast = i < currentIndex;
+        
+        const fill = isPast ? '#00ff66' : isActive ? '#ff00aa' : '#1e1b4b';
+        const stroke = isActive ? '#fff' : '#6366f1';
+        const r = isActive ? 28 : 22;
+        const textFill = isPast || isActive ? '#fff' : '#a5b4fc';
+        const fontSize = isActive ? 16 : 14;
+        
+        html += `
+          <circle cx="${x}" cy="${y}" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="${isActive ? 3 : 1}"
+            style="${isActive ? 'filter: drop-shadow(0 0 10px #ff00aa);' : ''}" />
+          <text x="${x}" y="${y + 5}" text-anchor="middle" fill="${textFill}" font-size="${fontSize}" font-weight="bold" font-family="Syne Mono, monospace">${note}</text>
+        `;
+      });
+      
+      // Center text
+      html += `
+        <text x="0" y="0" text-anchor="middle" fill="#a855f7" font-size="12" font-family="Syne Mono, monospace">4ths</text>
+        <text x="0" y="18" text-anchor="middle" fill="#6366f1" font-size="10" font-family="Syne Mono, monospace">${currentIndex + 1}/12</text>
+      `;
+      
+      circleSvg.innerHTML = html;
+    }
+
+    function renderNote() {
+      const note = circle[currentIndex];
+      currentNoteEl.textContent = note;
+      currentNoteEl.classList.toggle('correct', playedCorrect);
+      
+      if (currentIndex < 11) {
+        nextNoteEl.textContent = 'Next: ' + circle[currentIndex + 1];
+      } else {
+        nextNoteEl.textContent = 'Last one!';
+      }
+    }
+
+    function renderFretboard() {
+      const currentNote = circle[currentIndex];
+      const showAll = showAllPositions.checked;
+      let positions = getNotePositions(currentNote);
+      
+      if (!showAll && positions.length > 0) {
+        positions = [positions.sort((a, b) => a.fret - b.fret)[0]];
+      }
+
+      let html = '';
+      
+      for (let s = 3; s >= 0; s--) {
+        html += `<div class="fret-row">
+          <span class="string-label">${STRING_NAMES[s]}</span>
+          <div class="frets">
+            <div class="string-line"></div>`;
+        
+        for (let f = 0; f <= FRET_COUNT; f++) {
+          html += `<div class="fret">`;
+          
+          const pos = positions.find(p => p.string === s && p.fret === f);
+          if (pos) {
+            html += `<div class="note-marker ${playedCorrect ? 'played' : ''}">${currentNote}</div>`;
+          }
+          
+          html += `</div>`;
+        }
+        
+        html += `</div></div>`;
+      }
+      
+      html += `<div class="fret-numbers">`;
+      for (let f = 0; f <= FRET_COUNT; f++) {
+        html += `<span class="fret-num">${f}</span>`;
+      }
+      html += `</div>`;
+      
+      html += `<div class="fret-markers">`;
+      for (let f = 0; f <= FRET_COUNT; f++) {
+        const hasDot = [3, 5, 7, 9, 12].includes(f);
+        html += `<div class="fret-marker-dot ${f === 12 ? 'twelve' : ''}">${hasDot ? '<span></span>' : ''}</div>`;
+      }
+      html += `</div>`;
+      
+      fretboard.innerHTML = html;
+    }
+
+    function handleMIDI(event) {
+      const [status, note, velocity] = event.data;
+      if ((status & 0xf0) === 0x90 && velocity > 0) {
+        noteOn(getNoteName(note));
+      }
+    }
+
+    function handleKeyboard(e) {
+      const keyMap = {
+        'a': 'C', 'w': 'C#', 's': 'D', 'e': 'D#', 'd': 'E',
+        'f': 'F', 't': 'F#', 'g': 'G', 'y': 'G#', 'h': 'A',
+        'u': 'A#', 'j': 'B'
+      };
+      const note = keyMap[e.key.toLowerCase()];
+      if (note && startNote) noteOn(note);
+    }
+
+    function noteOn(noteName) {
+      const currentNote = circle[currentIndex];
+      const currentIdx = getNoteIndex(currentNote);
+      const playedIdx = getNoteIndex(noteName);
+      
+      if (currentIdx === playedIdx) {
+        playedCorrect = true;
+        renderNote();
+        renderFretboard();
+        renderCircle();
+        
+        setTimeout(() => {
+          if (currentIndex < 11) {
+            currentIndex++;
+            playedCorrect = false;
+            renderCircle();
+            renderNote();
+            renderFretboard();
+          } else {
+            showComplete();
+          }
+        }, 400);
+      }
+    }
+
+    function showComplete() {
+      gameScreen.classList.remove('active');
+      completeScreen.classList.add('active');
+      completedStart.textContent = startNote;
+    }
+
+    function resetGame() {
+      currentIndex = 0;
+      playedCorrect = false;
+      completeScreen.classList.remove('active');
+      gameScreen.classList.add('active');
+      renderCircle();
+      renderNote();
+      renderFretboard();
+    }
+
+    function changeStart() {
+      startNote = null;
+      gameScreen.classList.remove('active');
+      completeScreen.classList.remove('active');
+      startSelect.style.display = 'block';
+    }
+
+    init();
+  </script>
+</body>
+</html>
