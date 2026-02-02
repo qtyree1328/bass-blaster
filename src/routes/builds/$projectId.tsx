@@ -38,7 +38,9 @@ interface Project {
   chat?: ChatMessage[]
   research?: ResearchItem[]
   buildPath?: string
-  previewUrl?: string
+  previewUrl?: string  // Local dev URL (localhost, file://)
+  liveUrl?: string     // Hosted URL (GitHub Pages, custom domain)
+  repoUrl?: string     // GitHub repo URL
 }
 
 export const Route = createFileRoute('/builds/$projectId')({
@@ -342,9 +344,19 @@ function ProjectDetailPage() {
                   href={project.previewUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition"
+                  className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-medium hover:bg-amber-700 transition"
                 >
-                  👁️ View Live
+                  🔧 View Local
+                </a>
+              )}
+              {(project.liveUrl || project.repoUrl) && (
+                <a
+                  href={project.liveUrl || project.repoUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition"
+                >
+                  🌐 View Hosted
                 </a>
               )}
               <span className={`px-3 py-1 rounded-full text-xs font-medium ${
