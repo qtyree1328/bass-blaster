@@ -311,6 +311,22 @@
       text-align: right;
     }
     
+    .back-btn {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      font-family: 'Syne Mono', monospace;
+      font-size: 14px;
+      color: #888;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+    
+    .back-btn:hover {
+      color: #f80;
+      text-shadow: 0 0 10px #f80;
+    }
+    
     #resume-btn { border-color: #0fc; color: #0fc; text-shadow: 0 0 10px #0fc; box-shadow: 0 0 20px rgba(0,255,204,0.3); }
     #resume-btn:hover { background: #0fc; box-shadow: 0 0 40px rgba(0,255,204,0.6); }
     
@@ -414,6 +430,7 @@
   </div>
   
   <div id="start-screen" class="screen-overlay visible">
+    <a href="index.html" class="back-btn">← BACK TO HUB</a>
     <h1>BASS SURVIVOR</h1>
     <div class="instructions">
       PLAY NOTES ON YOUR BASS TO KILL MONSTERS<br>
