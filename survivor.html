@@ -272,6 +272,45 @@
       box-shadow: 0 0 40px rgba(255,136,0,0.6);
     }
     
+    .settings-panel {
+      background: rgba(0, 0, 0, 0.6);
+      border: 2px solid #f80;
+      border-radius: 10px;
+      padding: 20px 30px;
+      margin: 20px auto;
+      max-width: 300px;
+    }
+    
+    .setting-row {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      justify-content: center;
+    }
+    
+    .setting-row label {
+      font-family: 'Syne Mono', monospace;
+      font-size: 14px;
+      color: #f80;
+      text-shadow: 0 0 10px #f80;
+      white-space: nowrap;
+    }
+    
+    .setting-row input[type="range"] {
+      width: 100px;
+      accent-color: #f80;
+      cursor: pointer;
+    }
+    
+    .setting-row span {
+      font-family: 'Syne Mono', monospace;
+      font-size: 16px;
+      color: #0fc;
+      text-shadow: 0 0 10px #0fc;
+      min-width: 45px;
+      text-align: right;
+    }
+    
     #resume-btn { border-color: #0fc; color: #0fc; text-shadow: 0 0 10px #0fc; box-shadow: 0 0 20px rgba(0,255,204,0.3); }
     #resume-btn:hover { background: #0fc; box-shadow: 0 0 40px rgba(0,255,204,0.6); }
     
@@ -381,6 +420,13 @@
       ACCURACY COMBO STREAKS GIVE HIGHER SCORES<br>
       <span class="mic-info">LATER WAVES: CHORD MONSTERS REQUIRE ROOT + 3RD!</span>
     </div>
+    <div class="settings-panel">
+      <div class="setting-row">
+        <label for="speed-slider">GAME SPEED</label>
+        <input type="range" id="speed-slider" min="0.5" max="2" step="0.1" value="1">
+        <span id="speed-value">1.0x</span>
+      </div>
+    </div>
     <button id="start-btn" class="game-btn">🎸 START GAME</button>
   </div>
 
@@ -483,7 +529,7 @@
     let state = {
       running: false, paused: false, waveTransition: false,
       score: 0, combo: 0, maxCombo: 0, health: 100, wave: 1,
-      scale: 'E STANDARD', bpm: 80,
+      scale: 'E STANDARD', bpm: 80, speedMultiplier: 1,
       enemies: [], particles: [], lightning: [],
       lastBeat: 0, beatCount: 0, lastSpawn: 0, waveRemaining: 0,
       shake: 0, heldNotes: new Set()
@@ -1351,7 +1397,7 @@
     }
     
     function update(dt, now) {
-      const beatInterval = 60000 / state.bpm;
+      const beatInterval = (60000 / state.bpm) / state.speedMultiplier;
       
       if (now - state.lastBeat >= beatInterval) {
         state.lastBeat = now - ((now - state.lastBeat) % beatInterval);
@@ -1360,7 +1406,7 @@
         document.querySelectorAll('.beat-dot').forEach((d, i) => d.classList.toggle('active', i === state.beatCount));
       }
       
-      state.lastSpawn += dt;
+      state.lastSpawn += dt * state.speedMultiplier;
       const spawnInterval = Math.max(400, 1200 - state.wave * 50);
       if (state.lastSpawn > spawnInterval && state.waveRemaining > 0) {
         spawnEnemy();
@@ -1391,8 +1437,8 @@
         if (e.type === 'chord' && e.chordProgress > 0) speedMod = 0.5;
 
         if (dist > 0) {
-          e.x += (dx / dist) * e.speed * speedMod;
-          e.y += (dy / dist) * e.speed * speedMod;
+          e.x += (dx / dist) * e.speed * speedMod * state.speedMultiplier;
+          e.y += (dy / dist) * e.speed * speedMod * state.speedMultiplier;
         }
         e.pulsePhase += 0.1;
 
@@ -1669,6 +1715,14 @@
     $('restart-btn').addEventListener('click', () => location.reload());
     $('pause-btn').addEventListener('click', pause);
     $('resume-btn').addEventListener('click', resume);
+    
+    // Speed slider
+    const speedSlider = $('speed-slider');
+    const speedValue = $('speed-value');
+    speedSlider.addEventListener('input', () => {
+      state.speedMultiplier = parseFloat(speedSlider.value);
+      speedValue.textContent = state.speedMultiplier.toFixed(1) + 'x';
+    });
     
     window.addEventListener('keydown', e => {
       if ((e.key === 'Escape' || e.code === 'Space') && state.running) {
