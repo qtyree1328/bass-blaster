@@ -678,10 +678,10 @@
     const canvas = $('track');
     const ctx = canvas.getContext('2d');
     
-    const HIT_LINE_X = 0.15; // Left side for hit zone
-    const NOTE_RADIUS = 22;
-    const FRET_SPACING = 80; // Space between fret lines
-    const HIT_WINDOW = 40;
+    const NUM_FRETS = 12; // Total fret lines visible
+    const HIT_FRET = 2;   // Which fret is the hit zone (0-indexed from left)
+    const NOTE_RADIUS = 20;
+    const HIT_WINDOW_MS = 150; // Timing window in milliseconds
     
     let audioContext, analyser, micStream;
     let lastDetectedNote = null;
@@ -772,18 +772,17 @@
       return duration;
     }
     
-    function spawnNote() {
+    function spawnNote(targetTime) {
       const scaleNote = state.scaleNotes[state.currentScaleIndex];
       state.currentScaleIndex = (state.currentScaleIndex + 1) % state.scaleNotes.length;
       
-      // Spawn note centered in first fret off-screen (to the right)
       state.notes.push({
-        x: canvas.offsetWidth + FRET_SPACING / 2,
+        targetTime: targetTime,
+        spawnTime: performance.now(),
         name: scaleNote.name,
         midi: scaleNote.midi,
         string: scaleNote.string,
-        hit: null,
-        scored: false
+        hit: null
       });
     }
     
@@ -859,13 +858,12 @@
         }
         
         if (!noteHeld) {
-          const hitLineX = canvas.offsetWidth * HIT_LINE_X;
+          const now = performance.now();
           for (const note of state.notes) {
-            if (note.hit === null && !note.scored) {
-              const dist = Math.abs(note.x - hitLineX);
-              if (dist < HIT_WINDOW && note.name === noteName) {
+            if (note.hit === null) {
+              const timeDiff = Math.abs(now - note.targetTime);
+              if (timeDiff < HIT_WINDOW_MS && note.name === noteName) {
                 note.hit = true;
-                note.scored = true;
                 state.hits++;
                 noteHeld = true;
                 $('detected-note').className = 'detected-note hit';
@@ -900,16 +898,8 @@
     }
     
     function update(dt, now) {
-      const w = canvas.offsetWidth;
-      const hitLineX = w * HIT_LINE_X;
-      
-      // Calculate speed so notes travel one fret spacing per beat
       const { beatsPerMeasure, beatUnit } = parseTimeSig(state.timeSig);
       const beatDuration = 60000 / state.bpm * (4 / beatUnit);
-      
-      // Notes spawn at right edge, centered in a fret
-      const spawnX = w + FRET_SPACING / 2;
-      const speed = FRET_SPACING / (beatDuration / 1000); // one fret per beat
       
       // Metronome - play on each beat
       if (now - state.lastBeatTime >= beatDuration) {
@@ -917,143 +907,117 @@
         playClick(isDownbeat);
         updateBeatDisplay(state.currentBeat);
         
-        // Spawn note exactly when beat happens - it will arrive at hit line on NEXT beat
-        spawnNote();
+        // Spawn note - it will hit the target on a future beat
+        spawnNote(now + beatDuration * (NUM_FRETS - HIT_FRET - 1));
         
         state.currentBeat = (state.currentBeat % beatsPerMeasure) + 1;
         state.lastBeatTime += beatDuration;
       }
       
-      // Move notes
+      // Check for missed notes (past the hit window)
       for (const note of state.notes) {
-        note.x -= speed * (dt / 1000);
-        
-        if (note.hit === null && note.x < hitLineX - HIT_WINDOW) {
+        if (note.hit === null && now > note.targetTime + HIT_WINDOW_MS) {
           note.hit = false;
-          note.scored = true;
           state.misses++;
           updateStats();
         }
       }
       
-      state.notes = state.notes.filter(n => n.x > -NOTE_RADIUS * 3);
+      // Remove old notes
+      state.notes = state.notes.filter(n => now < n.targetTime + 1000);
     }
     
     function render() {
       const w = canvas.offsetWidth;
       const h = canvas.offsetHeight;
+      const now = performance.now();
+      const { beatUnit } = parseTimeSig(state.timeSig);
+      const beatDuration = 60000 / state.bpm * (4 / beatUnit);
       
-      // Fretboard background
-      const fbGradient = ctx.createLinearGradient(0, 0, 0, h);
-      fbGradient.addColorStop(0, '#3d2817');
-      fbGradient.addColorStop(0.5, '#5d3a1a');
-      fbGradient.addColorStop(1, '#3d2817');
-      ctx.fillStyle = fbGradient;
+      // Calculate fret spacing to fit all frets
+      const fretWidth = w / NUM_FRETS;
+      const hitLineX = fretWidth * HIT_FRET + fretWidth / 2;
+      
+      // Black background
+      ctx.fillStyle = '#0a0a0a';
       ctx.fillRect(0, 0, w, h);
       
-      // Wood grain texture (subtle lines)
-      ctx.strokeStyle = 'rgba(0,0,0,0.1)';
-      ctx.lineWidth = 1;
-      for (let y = 0; y < h; y += 8) {
-        ctx.beginPath();
-        ctx.moveTo(0, y + Math.sin(y * 0.1) * 2);
-        ctx.lineTo(w, y + Math.sin(y * 0.1 + 3) * 2);
-        ctx.stroke();
-      }
-      
-      // Vertical fret lines - evenly spaced across canvas
-      const hitLineX = w * HIT_LINE_X;
-      const numFrets = Math.ceil((w - hitLineX) / FRET_SPACING) + 2;
-      
-      for (let i = 0; i <= numFrets; i++) {
-        const x = hitLineX + (i * FRET_SPACING);
-        if (x > w + FRET_SPACING) continue;
-        
-        // Fret wire (silver/metallic)
-        ctx.strokeStyle = FRET_COLOR;
-        ctx.lineWidth = 4;
+      // Draw ALL vertical fret lines from left to right edge
+      ctx.strokeStyle = '#444';
+      ctx.lineWidth = 2;
+      for (let i = 0; i <= NUM_FRETS; i++) {
+        const x = i * fretWidth;
         ctx.beginPath();
         ctx.moveTo(x, 0);
         ctx.lineTo(x, h);
         ctx.stroke();
-        
-        // Fret highlight
-        ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(x + 2, 0);
-        ctx.lineTo(x + 2, h);
-        ctx.stroke();
       }
       
-      // Strings (4 bass strings)
+      // Horizontal strings (4 bass strings)
       const stringSpacing = h / 5;
       for (let i = 0; i < 4; i++) {
         const y = stringSpacing * (i + 1);
-        
-        // String shadow
-        ctx.strokeStyle = 'rgba(0,0,0,0.3)';
-        ctx.lineWidth = 4 - i * 0.5;
-        ctx.beginPath();
-        ctx.moveTo(0, y + 2);
-        ctx.lineTo(w, y + 2);
-        ctx.stroke();
-        
-        // String
         ctx.strokeStyle = STRING_COLORS[i];
         ctx.lineWidth = 3 - i * 0.5;
         ctx.beginPath();
         ctx.moveTo(0, y);
         ctx.lineTo(w, y);
         ctx.stroke();
-        
-        // String highlight
-        ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(0, y - 1);
-        ctx.lineTo(w, y - 1);
-        ctx.stroke();
       }
       
-      // Nut (at hit line) - thicker, bone-colored
-      ctx.fillStyle = NUT_COLOR;
-      ctx.fillRect(hitLineX - 6, 0, 12, h);
+      // Hit zone - highlight the target fret
+      ctx.fillStyle = 'rgba(255,180,80,0.15)';
+      ctx.fillRect(HIT_FRET * fretWidth, 0, fretWidth, h);
       
-      // Hit zone glow
-      ctx.fillStyle = 'rgba(255,180,80,0.12)';
-      ctx.fillRect(hitLineX - HIT_WINDOW, 0, HIT_WINDOW + FRET_SPACING/2, h);
+      // Hit line (center of hit fret)
+      ctx.strokeStyle = '#fb4';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(hitLineX, 0);
+      ctx.lineTo(hitLineX, h);
+      ctx.stroke();
       
-      // Draw notes as circles centered within frets
+      // Draw notes - position based on time until target
       const noteY = h / 2;
       
       for (const note of state.notes) {
+        // Calculate position: how many beats until target time?
+        const timeUntilTarget = note.targetTime - now;
+        const beatsUntilTarget = timeUntilTarget / beatDuration;
+        
+        // Note moves from right to left, one fret per beat
+        // At targetTime, note should be at hitLineX
+        const noteX = hitLineX + (beatsUntilTarget * fretWidth);
+        
+        // Skip if off screen
+        if (noteX < -NOTE_RADIUS || noteX > w + NOTE_RADIUS) continue;
+        
         ctx.save();
-        ctx.translate(note.x, noteY);
+        ctx.translate(noteX, noteY);
         
         // Note circle
         ctx.beginPath();
         ctx.arc(0, 0, NOTE_RADIUS, 0, Math.PI * 2);
         
         if (note.hit === true) {
-          ctx.fillStyle = 'rgba(100,255,100,0.95)';
+          ctx.fillStyle = '#4f4';
           ctx.strokeStyle = '#8f8';
           ctx.shadowColor = '#8f8';
           ctx.shadowBlur = 20;
         } else if (note.hit === false) {
-          ctx.fillStyle = 'rgba(255,80,80,0.95)';
+          ctx.fillStyle = '#f44';
           ctx.strokeStyle = '#f66';
           ctx.shadowColor = '#f66';
           ctx.shadowBlur = 20;
         } else {
-          ctx.fillStyle = 'rgba(20,15,10,0.95)';
+          ctx.fillStyle = '#222';
           ctx.strokeStyle = '#fb4';
           ctx.shadowColor = '#fb4';
           ctx.shadowBlur = 10;
         }
         
         ctx.fill();
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 2;
         ctx.stroke();
         ctx.shadowBlur = 0;
         
@@ -1067,7 +1031,7 @@
         ctx.restore();
       }
       
-      // Mode info
+      // Mode info (bottom right)
       ctx.fillStyle = 'rgba(255,255,255,0.5)';
       ctx.font = '12px "Syne Mono"';
       ctx.textAlign = 'right';
