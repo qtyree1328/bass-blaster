@@ -574,8 +574,8 @@
       lastDetectedNote: null,
       lastDetectedTime: 0,
       rms: 0,
-      minRmsThreshold: 0.08,
-      minCorrelation: 0.5,
+      minRmsThreshold: 0.15,  // HIGH threshold for bass only (rejects voice)
+      minCorrelation: 0.7,   // Require strong pitch confidence
       noteDebounceTime: 100,
       noteOffDebounceTime: 300,
       vizCanvas: null,

@@ -618,6 +618,11 @@
     function detectNote() {
       if (!micState.analyzer) return;
       
+      // Bass guitar frequency range - filters out voice
+      const MIN_BASS_FREQ = 35;
+      const MAX_BASS_FREQ = 400;
+      const RMS_THRESHOLD = 0.15;
+      
       const buffer = new Float32Array(micState.analyzer.fftSize);
       micState.analyzer.getFloatTimeDomainData(buffer);
       
@@ -626,14 +631,15 @@
       for (let i = 0; i < buffer.length; i++) rms += buffer[i] * buffer[i];
       rms = Math.sqrt(rms / buffer.length);
       
-      if (rms < 0.08) {
+      if (rms < RMS_THRESHOLD) {
         micState.lastNote = null;
         return;
       }
       
       const result = autoCorrelate(buffer, audioCtx.sampleRate);
       
-      if (result.frequency > 30 && result.frequency < 400 && result.confidence > 0.5) {
+      // BASS ONLY: High confidence required, bass frequency range
+      if (result.frequency >= MIN_BASS_FREQ && result.frequency <= MAX_BASS_FREQ && result.confidence > 0.7) {
         const midi = Math.round(12 * Math.log2(result.frequency / A4_FREQ) + A4_MIDI);
         const note = NOTE_NAMES[midi % 12];
         
@@ -649,7 +655,7 @@
       let rms = 0;
       for (let i = 0; i < SIZE; i++) rms += buffer[i] * buffer[i];
       rms = Math.sqrt(rms / SIZE);
-      if (rms < 0.08) return { frequency: -1, confidence: 0 };
+      if (rms < 0.15) return { frequency: -1, confidence: 0 };
       
       const yinBufferSize = Math.floor(SIZE / 2);
       const yinBuffer = new Float32Array(yinBufferSize);

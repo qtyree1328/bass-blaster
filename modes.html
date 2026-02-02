@@ -577,28 +577,34 @@
       setupMicrophone();
     }
     
-    // Microphone pitch detection
+    // Microphone pitch detection - BASS GUITAR ONLY
     let audioContext, analyser, micStream;
     let lastDetectedNote = null;
     let lastNoteTime = 0;
     let stableNoteCount = 0;
     let pendingNote = null;
-    const NOTE_COOLDOWN_MS = 300;        // Minimum time between accepting notes (fast enough for playing)
-    const STABILITY_FRAMES_REQUIRED = 3; // Note must be detected this many times in a row
-    const RMS_THRESHOLD = 0.08;          // Minimum volume threshold (higher = less sensitive)
+    
+    // Bass guitar settings - tuned to reject voice
+    const NOTE_COOLDOWN_MS = 250;        // Fast enough for playing
+    const STABILITY_FRAMES_REQUIRED = 3; // Note must be stable
+    const RMS_THRESHOLD = 0.15;          // HIGH threshold - only loud, clear notes
+    const MIN_BASS_FREQ = 35;            // Below low B on 5-string (31 Hz)
+    const MAX_BASS_FREQ = 400;           // Upper range of bass guitar
+    // Human voice fundamental: male 85-180Hz, female 165-255Hz
+    // But voice has weak low-end and complex harmonics - bass is cleaner
     
     async function setupMicrophone() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
         analyser = audioContext.createAnalyser();
-        analyser.fftSize = 2048;
+        analyser.fftSize = 4096;  // Larger FFT for better low-freq resolution
         
         const source = audioContext.createMediaStreamSource(stream);
         source.connect(analyser);
         micStream = stream;
         
-        midiStatus.textContent = '🎤 Mic Ready';
+        midiStatus.textContent = '🎸 Bass Mic Ready';
         midiStatus.classList.add('connected');
         keyboardHint.classList.add('hidden');
         
@@ -617,15 +623,15 @@
       const buffer = new Float32Array(analyser.fftSize);
       analyser.getFloatTimeDomainData(buffer);
       
-      const pitch = detectPitch(buffer, audioContext.sampleRate);
+      const result = detectBassPitch(buffer, audioContext.sampleRate);
       const noteDisplay = document.getElementById('detectedNote');
       const now = Date.now();
       
-      if (pitch > 0) {
-        const noteNum = Math.round(12 * Math.log2(pitch / 440) + 69);
+      if (result && result.freq > 0) {
+        const noteNum = Math.round(12 * Math.log2(result.freq / 440) + 69);
         const noteName = NOTE_NAMES[noteNum % 12];
         
-        if (noteDisplay) noteDisplay.textContent = '🎤 ' + noteName;
+        if (noteDisplay) noteDisplay.textContent = '🎸 ' + noteName + ' (' + Math.round(result.freq) + 'Hz)';
         
         // Stability check: note must be detected multiple times in a row
         if (noteName === pendingNote) {
@@ -645,23 +651,24 @@
           noteOn(noteName);
         }
       } else {
-        // Reset stability tracking when no pitch detected
+        // Reset stability tracking when no valid bass pitch detected
         pendingNote = null;
         stableNoteCount = 0;
-        if (noteDisplay) noteDisplay.textContent = '🎤 --';
+        if (noteDisplay) noteDisplay.textContent = '🎸 --';
       }
       
       requestAnimationFrame(processMic);
     }
     
-    function detectPitch(buffer, sampleRate) {
-      // Autocorrelation pitch detection
+    function detectBassPitch(buffer, sampleRate) {
+      // Check volume first - must be LOUD
       let SIZE = buffer.length;
       let rms = 0;
       for (let i = 0; i < SIZE; i++) rms += buffer[i] * buffer[i];
       rms = Math.sqrt(rms / SIZE);
-      if (rms < RMS_THRESHOLD) return -1;  // Volume threshold - reject quiet sounds
+      if (rms < RMS_THRESHOLD) return null;  // Too quiet - reject
       
+      // Autocorrelation pitch detection
       let r1 = 0, r2 = SIZE - 1;
       const threshold = 0.2;
       for (let i = 0; i < SIZE / 2; i++) {
@@ -673,6 +680,7 @@
       
       buffer = buffer.slice(r1, r2);
       SIZE = buffer.length;
+      if (SIZE < 100) return null;  // Not enough data
       
       const c = new Array(SIZE).fill(0);
       for (let i = 0; i < SIZE; i++) {
@@ -681,21 +689,36 @@
         }
       }
       
+      // Find first dip
       let d = 0;
-      while (c[d] > c[d + 1]) d++;
+      while (d < SIZE - 1 && c[d] > c[d + 1]) d++;
       
+      // Find peak after dip (this is the pitch period)
       let maxval = -1, maxpos = -1;
       for (let i = d; i < SIZE; i++) {
         if (c[i] > maxval) { maxval = c[i]; maxpos = i; }
       }
       
+      if (maxpos < 1 || maxpos >= SIZE - 1) return null;
+      
+      // Parabolic interpolation for sub-sample accuracy
       let T0 = maxpos;
       const x1 = c[T0 - 1], x2 = c[T0], x3 = c[T0 + 1];
       const a = (x1 + x3 - 2 * x2) / 2;
       const b = (x3 - x1) / 2;
       if (a) T0 -= b / (2 * a);
       
-      return sampleRate / T0;
+      const freq = sampleRate / T0;
+      
+      // CRITICAL: Only accept bass guitar frequency range
+      // This filters out most voice (especially higher harmonics)
+      if (freq < MIN_BASS_FREQ || freq > MAX_BASS_FREQ) return null;
+      
+      // Check correlation strength (confidence)
+      const confidence = maxval / c[0];
+      if (confidence < 0.8) return null;  // Weak correlation = probably not a clean note
+      
+      return { freq, confidence, rms };
     }
 
     function getNoteIndex(name) {

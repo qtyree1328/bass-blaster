@@ -801,12 +801,17 @@
       $('accuracy').textContent = total > 0 ? Math.round((state.hits / total) * 100) + '%' : '--%';
     }
     
+    // Bass guitar settings
+    const MIN_BASS_FREQ = 35;
+    const MAX_BASS_FREQ = 400;
+    const RMS_THRESHOLD = 0.15;
+    
     function detectPitch(buffer, sampleRate) {
       const SIZE = buffer.length;
       let rms = 0;
       for (let i = 0; i < SIZE; i++) rms += buffer[i] * buffer[i];
       rms = Math.sqrt(rms / SIZE);
-      if (rms < 0.08) return null;
+      if (rms < RMS_THRESHOLD) return null;  // High threshold - bass only
       
       let bestCorrelation = 0, bestOffset = -1;
       for (let offset = 50; offset < SIZE / 2; offset++) {
@@ -822,7 +827,10 @@
       }
       
       if (bestCorrelation > 0.9 && bestOffset > 0) {
-        return sampleRate / bestOffset;
+        const freq = sampleRate / bestOffset;
+        // BASS ONLY: reject frequencies outside bass range (filters voice)
+        if (freq < MIN_BASS_FREQ || freq > MAX_BASS_FREQ) return null;
+        return freq;
       }
       return null;
     }
@@ -845,7 +853,7 @@
       analyser.getFloatTimeDomainData(buffer);
       const freq = detectPitch(buffer, audioContext.sampleRate);
       
-      if (freq && freq > 30 && freq < 500) {
+      if (freq && freq >= MIN_BASS_FREQ && freq <= MAX_BASS_FREQ) {
         const midi = freqToMidi(freq);
         const noteName = midiToName(midi);
         

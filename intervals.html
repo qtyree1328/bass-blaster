@@ -538,12 +538,17 @@
       return micState.pitchHistory.every(m => Math.abs(m - micState.pitchHistory[2]) <= 1);
     }
     
+    // Bass guitar frequency range - filters out voice
+    const MIN_BASS_FREQ = 35;   // Below low B on 5-string
+    const MAX_BASS_FREQ = 400;  // Upper bass range
+    const RMS_THRESHOLD = 0.15; // High threshold for clean notes only
+    
     function autoCorrelate(buffer, sampleRate) {
       const SIZE = buffer.length;
       let rms = 0;
       for (let i = 0; i < SIZE; i++) rms += buffer[i] * buffer[i];
       rms = Math.sqrt(rms / SIZE);
-      if (rms < 0.08) return { frequency: -1, confidence: 0 };
+      if (rms < RMS_THRESHOLD) return { frequency: -1, confidence: 0 };
       
       const yinBufferSize = Math.floor(SIZE / 2);
       const yinBuffer = new Float32Array(yinBufferSize);
@@ -580,7 +585,14 @@
         betterTau = tauEstimate + (s2 - s0) / (2 * (2 * s1 - s2 - s0));
       }
       
-      return { frequency: sampleRate / betterTau, confidence: 1 - yinBuffer[tauEstimate] };
+      const freq = sampleRate / betterTau;
+      const confidence = 1 - yinBuffer[tauEstimate];
+      
+      // BASS ONLY: Reject frequencies outside bass guitar range (filters voice)
+      if (freq < MIN_BASS_FREQ || freq > MAX_BASS_FREQ) return { frequency: -1, confidence: 0 };
+      if (confidence < 0.7) return { frequency: -1, confidence: 0 };  // Require strong confidence
+      
+      return { frequency: freq, confidence };
     }
   </script>
 </body>
