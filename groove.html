@@ -626,7 +626,7 @@
       for (let i = 0; i < buffer.length; i++) rms += buffer[i] * buffer[i];
       rms = Math.sqrt(rms / buffer.length);
       
-      if (rms < 0.03) {
+      if (rms < 0.08) {
         micState.lastNote = null;
         return;
       }
@@ -649,7 +649,7 @@
       let rms = 0;
       for (let i = 0; i < SIZE; i++) rms += buffer[i] * buffer[i];
       rms = Math.sqrt(rms / SIZE);
-      if (rms < 0.02) return { frequency: -1, confidence: 0 };
+      if (rms < 0.08) return { frequency: -1, confidence: 0 };
       
       const yinBufferSize = Math.floor(SIZE / 2);
       const yinBuffer = new Float32Array(yinBufferSize);

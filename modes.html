@@ -583,8 +583,8 @@
     let lastNoteTime = 0;
     let stableNoteCount = 0;
     let pendingNote = null;
-    const NOTE_COOLDOWN_MS = 800;        // Minimum time between accepting notes
-    const STABILITY_FRAMES_REQUIRED = 4; // Note must be detected this many times in a row
+    const NOTE_COOLDOWN_MS = 300;        // Minimum time between accepting notes (fast enough for playing)
+    const STABILITY_FRAMES_REQUIRED = 3; // Note must be detected this many times in a row
     const RMS_THRESHOLD = 0.08;          // Minimum volume threshold (higher = less sensitive)
     
     async function setupMicrophone() {
