@@ -492,6 +492,12 @@
     let player = { x: 0, y: 0 };
     let audioCtx, wrongNoteTimeout;
     
+    // Load bass image
+    let bassImage = new Image();
+    bassImage.src = 'bass-icon.webp';
+    let bassImageLoaded = false;
+    bassImage.onload = () => { bassImageLoaded = true; };
+    
     // ═══════════════════════════════════════════════════════════════
     // MICROPHONE STATE
     // ═══════════════════════════════════════════════════════════════
@@ -1440,7 +1446,7 @@
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
       }
       
-      // Bass guitar (player)
+      // Bass guitar (player) - using custom image
       const bassScale = getUIScale();
       ctx.save();
       ctx.translate(player.x, player.y);
@@ -1451,8 +1457,19 @@
       grad.addColorStop(1, 'transparent');
       ctx.fillStyle = grad;
       ctx.beginPath(); ctx.arc(0, 0, glowRadius, 0, Math.PI * 2); ctx.fill();
-      ctx.shadowColor = '#f80'; ctx.shadowBlur = 10 * bassScale;
-      drawSprite(BASS_SPRITE, 0, 0, Math.round(5 * bassScale), '#fff', '#f80');
+      
+      if (bassImageLoaded) {
+        // Draw the bass image (facing up, so headstock is at top)
+        const imgWidth = 80 * bassScale;
+        const imgHeight = 120 * bassScale;
+        ctx.shadowColor = '#f80'; ctx.shadowBlur = 15 * bassScale;
+        ctx.drawImage(bassImage, -imgWidth / 2, -imgHeight / 2, imgWidth, imgHeight);
+        ctx.shadowBlur = 0;
+      } else {
+        // Fallback to sprite if image not loaded
+        ctx.shadowColor = '#f80'; ctx.shadowBlur = 10 * bassScale;
+        drawSprite(BASS_SPRITE, 0, 0, Math.round(5 * bassScale), '#fff', '#f80');
+      }
       ctx.restore();
       
       // Enemies
@@ -1496,14 +1513,27 @@
           ctx.fill();
         }
         
-        // Sprite
-        const spriteKey = SPRITE_MAP[e.note] || e.note;
-        const sprite = SPRITES[spriteKey] || SPRITES.C;
+        // Music note symbol instead of sprite
+        const noteSymbols = ['♩', '♪', '♫', '♬'];
+        const noteIndex = 'CDEFGAB'.indexOf(e.note[0]) % noteSymbols.length;
+        const symbol = e.type === 'chord' ? '♫' : noteSymbols[noteIndex >= 0 ? noteIndex : 0];
+        const fontSize = Math.round(pulse * 1.2);
+        
+        ctx.font = `bold ${fontSize}px serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        
+        // Shadow
         ctx.globalAlpha = 0.5;
-        drawSprite(sprite, 3, 3, px, '#000', '#000');
+        ctx.fillStyle = '#000';
+        ctx.fillText(symbol, 3, 3);
         ctx.globalAlpha = 1;
-        ctx.shadowColor = e.color; ctx.shadowBlur = 6;
-        drawSprite(sprite, 0, 0, px, adjustColor(e.color, 0.15), e.color);
+        
+        // Main symbol with glow
+        ctx.shadowColor = e.color;
+        ctx.shadowBlur = 15;
+        ctx.fillStyle = e.color;
+        ctx.fillText(symbol, 0, 0);
         ctx.shadowBlur = 0;
         
         // Labels
