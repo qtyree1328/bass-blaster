@@ -46,7 +46,7 @@ interface Project {
   description: string
   tech: string[]
   category: string
-  status: 'idea' | 'development' | 'built' | 'rejected'
+  status: 'idea' | 'development' | 'built' | 'published' | 'rejected'
   priority: 'high' | 'medium' | 'low'
   createdAt: string
   updatedAt?: string

@@ -286,43 +286,6 @@ function CommandCenter() {
           />
         </div>
 
-        {/* Built Projects */}
-        {builtProjects.length > 0 && (
-          <div className="mb-8">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-slate-900">🚀 Your Built Projects</h2>
-              <Link to="/projects" className="text-xs text-blue-600 hover:text-blue-800">Manage →</Link>
-            </div>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              {builtProjects.map(project => (
-                project.previewUrl ? (
-                  <a
-                    key={project.id}
-                    href={project.previewUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="relative bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl border border-emerald-200 p-5 hover:shadow-md hover:border-emerald-300 transition-all"
-                  >
-                    <span className="text-3xl mb-3 block">{project.hubIcon || '🚀'}</span>
-                    <h3 className="font-semibold text-slate-900">{project.name}</h3>
-                    <p className="text-sm text-slate-500 mt-1 line-clamp-2">{project.hubDescription}</p>
-                    <span className="absolute top-4 right-4 text-slate-400 text-xs">↗</span>
-                  </a>
-                ) : (
-                  <div
-                    key={project.id}
-                    className="relative bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl border border-emerald-200 p-5"
-                  >
-                    <span className="text-3xl mb-3 block">{project.hubIcon || '🚀'}</span>
-                    <h3 className="font-semibold text-slate-900">{project.name}</h3>
-                    <p className="text-sm text-slate-500 mt-1 line-clamp-2">{project.hubDescription}</p>
-                  </div>
-                )
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Two Column Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Task Queue */}
