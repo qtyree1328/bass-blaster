@@ -436,7 +436,7 @@
     <header>
       <a href="index.html" class="back-btn">← Back</a>
       <h1>🎵 MODES</h1>
-      <span id="midiStatus" class="midi-status">No MIDI</span>
+      <span id="micStatus" class="midi-status">🎤 Mic Off</span>
     </header>
 
     <!-- Key Selection -->
@@ -482,7 +482,7 @@
       </div>
 
       <p class="keyboard-hint" id="keyboardHint">
-        No MIDI detected. Keyboard: A=C, W=C#, S=D, E=D#, D=E, F=F, T=F#, G=G, Y=G#, H=A, U=A#, J=B
+        Keyboard fallback: A=C, W=C#, S=D, E=D#, D=E, F=F, T=F#, G=G, Y=G#, H=A, U=A#, J=B
       </p>
     </div>
 
@@ -516,7 +516,6 @@
     let currentChordIndex = 0;
     let playedNotes = new Set();
     let chords = [];
-    let midiAccess = null;
 
     // DOM elements
     const keySelect = document.getElementById('keySelect');
@@ -529,7 +528,7 @@
     const notePills = document.getElementById('notePills');
     const playedCount = document.getElementById('playedCount');
     const fretboard = document.getElementById('fretboard');
-    const midiStatus = document.getElementById('midiStatus');
+    const micStatus = document.getElementById('micStatus');
     const keyboardHint = document.getElementById('keyboardHint');
     const completedKey = document.getElementById('completedKey');
     const showAllPositions = document.getElementById('showAllPositions');
@@ -545,35 +544,13 @@
         keyGrid.appendChild(btn);
       });
 
-      // MIDI setup
-      if (navigator.requestMIDIAccess) {
-        navigator.requestMIDIAccess().then(access => {
-          midiAccess = access;
-          midiStatus.textContent = '🎸 MIDI Ready';
-          midiStatus.classList.add('connected');
-          keyboardHint.classList.add('hidden');
-          
-          access.inputs.forEach(input => {
-            input.onmidimessage = handleMIDI;
-          });
-          
-          access.onstatechange = () => {
-            access.inputs.forEach(input => {
-              input.onmidimessage = handleMIDI;
-            });
-          };
-        }).catch(() => {
-          midiStatus.textContent = 'No MIDI';
-        });
-      }
-
       // Keyboard fallback
       window.addEventListener('keydown', handleKeyboard);
       
       // Toggle listener
       showAllPositions.addEventListener('change', renderFretboard);
       
-      // Microphone setup
+      // Microphone setup (primary input)
       setupMicrophone();
     }
     
@@ -604,8 +581,8 @@
         source.connect(analyser);
         micStream = stream;
         
-        midiStatus.textContent = '🎸 Bass Mic Ready';
-        midiStatus.classList.add('connected');
+        micStatus.textContent = '🎸 Bass Mic Ready';
+        micStatus.classList.add('connected');
         keyboardHint.classList.add('hidden');
         
         requestAnimationFrame(processMic);
@@ -868,13 +845,6 @@
       html += `</div>`;
       
       fretboard.innerHTML = html;
-    }
-
-    function handleMIDI(event) {
-      const [status, note, velocity] = event.data;
-      if ((status & 0xf0) === 0x90 && velocity > 0) {
-        noteOn(getNoteName(note));
-      }
     }
 
     function handleKeyboard(e) {
