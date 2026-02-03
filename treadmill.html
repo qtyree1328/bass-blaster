@@ -401,6 +401,15 @@
         <button class="btn btn-pause" id="pause-btn" style="display:none;">⏸ Pause</button>
         <button class="btn btn-stop" id="stop-btn" style="display:none;">⏹ Stop</button>
       </div>
+      
+      <div style="display: flex; justify-content: center; align-items: center; gap: 12px; margin-top: 15px; color: rgba(255,255,255,0.6); font-size: 0.85rem;">
+        <label>🎤 Sensitivity:</label>
+        <input type="range" id="sensitivity" min="1" max="100" value="50" style="width: 100px; accent-color: #00ffcc;">
+        <span id="sensitivityValue" style="color: #00ffcc;">50</span>
+        <div style="width: 50px; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden;">
+          <div id="levelFill" style="height: 100%; width: 0%; background: linear-gradient(90deg, #00ff66, #ffcc00, #ff4444);"></div>
+        </div>
+      </div>
     </div>
     
     <div class="main-area">
@@ -601,7 +610,15 @@
     // Bass guitar settings - filters out voice
     const MIN_BASS_FREQ = 35;
     const MAX_BASS_FREQ = 400;
-    const RMS_THRESHOLD = 0.15;
+    let rmsThreshold = 0.08;  // Adjustable via slider
+    
+    // Sensitivity: slider 1-100 maps to RMS 0.20-0.01 (higher slider = more sensitive)
+    function updateSensitivity(val) {
+      rmsThreshold = 0.20 - (val / 100) * 0.19;
+      $('sensitivityValue').textContent = val;
+    }
+    $('sensitivity').addEventListener('input', e => updateSensitivity(e.target.value));
+    updateSensitivity(50);
     
     // Pitch detection
     function detectPitch(buffer, sampleRate) {
@@ -609,7 +626,13 @@
       let rms = 0;
       for (let i = 0; i < SIZE; i++) rms += buffer[i] * buffer[i];
       rms = Math.sqrt(rms / SIZE);
-      if (rms < RMS_THRESHOLD) return null;  // High threshold - bass only
+      
+      // Update level meter
+      const levelPct = Math.min(100, (rms / 0.3) * 100);
+      const levelFill = $('levelFill');
+      if (levelFill) levelFill.style.width = levelPct + '%';
+      
+      if (rms < rmsThreshold) return null;  // Adjustable threshold
       
       let bestCorrelation = 0, bestOffset = -1;
       for (let offset = 50; offset < SIZE / 2; offset++) {

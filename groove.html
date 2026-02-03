@@ -339,6 +339,15 @@
       <div class="bpm-display" id="bpmDisplay">90</div>
       <div class="bpm-label">BPM</div>
       
+      <div style="display: flex; justify-content: center; align-items: center; gap: 12px; margin: 10px 0; color: rgba(255,255,255,0.6); font-size: 0.85rem;">
+        <label>🎤 Sensitivity:</label>
+        <input type="range" id="sensitivity" min="1" max="100" value="50" style="width: 100px; accent-color: #fb4;">
+        <span id="sensitivityValue" style="color: #fb4;">50</span>
+        <div style="width: 50px; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden;">
+          <div id="levelFill" style="height: 100%; width: 0%; background: linear-gradient(90deg, #00ff66, #ffcc00, #ff4444);"></div>
+        </div>
+      </div>
+      
       <div class="beat-visual" id="beatVisual">
         <div class="beat-dot downbeat"></div>
         <div class="beat-dot"></div>
@@ -615,13 +624,21 @@
       osc.stop(audioCtx.currentTime + 0.05);
     }
     
+    // Sensitivity: slider 1-100 maps to RMS 0.20-0.01 (higher slider = more sensitive)
+    let rmsThreshold = 0.08;
+    function updateSensitivity(val) {
+      rmsThreshold = 0.20 - (val / 100) * 0.19;
+      document.getElementById('sensitivityValue').textContent = val;
+    }
+    document.getElementById('sensitivity').addEventListener('input', e => updateSensitivity(e.target.value));
+    updateSensitivity(50);
+    
     function detectNote() {
       if (!micState.analyzer) return;
       
       // Bass guitar frequency range - filters out voice
       const MIN_BASS_FREQ = 35;
       const MAX_BASS_FREQ = 400;
-      const RMS_THRESHOLD = 0.15;
       
       const buffer = new Float32Array(micState.analyzer.fftSize);
       micState.analyzer.getFloatTimeDomainData(buffer);
@@ -631,7 +648,12 @@
       for (let i = 0; i < buffer.length; i++) rms += buffer[i] * buffer[i];
       rms = Math.sqrt(rms / buffer.length);
       
-      if (rms < RMS_THRESHOLD) {
+      // Update level meter
+      const levelPct = Math.min(100, (rms / 0.3) * 100);
+      const levelFill = document.getElementById('levelFill');
+      if (levelFill) levelFill.style.width = levelPct + '%';
+      
+      if (rms < rmsThreshold) {
         micState.lastNote = null;
         return;
       }

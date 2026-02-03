@@ -318,6 +318,15 @@
       
       <button class="play-btn" id="playRefBtn">🔊 PLAY REFERENCE</button>
       
+      <div style="display: flex; justify-content: center; align-items: center; gap: 12px; margin: 15px 0; color: rgba(255,255,255,0.6); font-size: 0.85rem;">
+        <label>🎤 Sensitivity:</label>
+        <input type="range" id="sensitivity" min="1" max="100" value="50" style="width: 100px; accent-color: #00ffcc;">
+        <span id="sensitivityValue" style="color: #00ffcc;">50</span>
+        <div style="width: 50px; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden;">
+          <div id="levelFill" style="height: 100%; width: 0%; background: linear-gradient(90deg, #00ff66, #ffcc00, #ff4444);"></div>
+        </div>
+      </div>
+      
       <div class="message" id="message"></div>
       
       <div class="stats">
@@ -541,14 +550,28 @@
     // Bass guitar frequency range - filters out voice
     const MIN_BASS_FREQ = 35;   // Below low B on 5-string
     const MAX_BASS_FREQ = 400;  // Upper bass range
-    const RMS_THRESHOLD = 0.15; // High threshold for clean notes only
+    let rmsThreshold = 0.08;    // Adjustable via slider
+    
+    // Sensitivity: slider 1-100 maps to RMS 0.20-0.01 (higher slider = more sensitive)
+    function updateSensitivity(val) {
+      rmsThreshold = 0.20 - (val / 100) * 0.19;
+      document.getElementById('sensitivityValue').textContent = val;
+    }
+    document.getElementById('sensitivity').addEventListener('input', e => updateSensitivity(e.target.value));
+    updateSensitivity(50);
     
     function autoCorrelate(buffer, sampleRate) {
       const SIZE = buffer.length;
       let rms = 0;
       for (let i = 0; i < SIZE; i++) rms += buffer[i] * buffer[i];
       rms = Math.sqrt(rms / SIZE);
-      if (rms < RMS_THRESHOLD) return { frequency: -1, confidence: 0 };
+      
+      // Update level meter
+      const levelPct = Math.min(100, (rms / 0.3) * 100);
+      const levelFill = document.getElementById('levelFill');
+      if (levelFill) levelFill.style.width = levelPct + '%';
+      
+      if (rms < rmsThreshold) return { frequency: -1, confidence: 0 };
       
       const yinBufferSize = Math.floor(SIZE / 2);
       const yinBuffer = new Float32Array(yinBufferSize);
