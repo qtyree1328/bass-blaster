@@ -157,7 +157,7 @@
       margin-top: 15px;
     }
     
-    /* Fretboard */
+    /* Fretboard - Enhanced grid-based layout */
     .fretboard-container {
       padding: 10px 0 20px;
       margin-bottom: 20px;
@@ -175,38 +175,42 @@
     .fret-row {
       display: flex;
       align-items: center;
-      height: 36px;
+      height: 40px;
       position: relative;
     }
     
     .string-label {
-      width: 24px;
-      min-width: 24px;
+      width: 28px;
+      min-width: 28px;
       font-size: 0.85rem;
       color: rgba(255,255,255,0.7);
       font-weight: bold;
+      text-align: center;
     }
     
     .frets {
-      display: flex;
+      display: grid;
+      grid-template-columns: 40px repeat(15, 1fr);
       flex: 1;
       position: relative;
+      height: 100%;
     }
     
     .fret {
-      flex: 1;
       height: 100%;
-      border-right: 2px solid #888;
+      border-left: 3px solid #666;
       position: relative;
       display: flex;
       align-items: center;
       justify-content: center;
-      min-width: 0;
     }
     
     .fret:first-child {
-      border-right: 4px solid #f5f5dc;
-      flex: 0.5;
+      border-left: 5px solid #f5f5dc;
+    }
+    
+    .fret:last-child {
+      border-right: 3px solid #666;
     }
     
     .string-line {
@@ -214,71 +218,70 @@
       left: 0;
       right: 0;
       height: 3px;
-      background: linear-gradient(90deg, #ccc, #888);
+      background: #999;
       top: 50%;
       transform: translateY(-50%);
+      z-index: 1;
     }
     
-    .fret-row:nth-child(1) .string-line { height: 4px; background: #ddd; }
-    .fret-row:nth-child(2) .string-line { height: 3.5px; }
+    .fret-row:nth-child(1) .string-line { height: 4px; background: #ccc; }
+    .fret-row:nth-child(2) .string-line { height: 3.5px; background: #bbb; }
     .fret-row:nth-child(3) .string-line { height: 3px; background: #aaa; }
     .fret-row:nth-child(4) .string-line { height: 2.5px; background: #999; }
     
     .note-marker {
-      width: 32px;
-      height: 32px;
+      width: 30px;
+      height: 30px;
       border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 0.75rem;
+      font-size: 0.7rem;
       font-weight: bold;
       position: relative;
       z-index: 10;
+      transition: all 0.2s;
       background: #ff8800;
       color: #000;
-      transition: all 0.2s;
     }
     
     .note-marker.played {
       background: #00ff66 !important;
       box-shadow: 0 0 15px #00ff66;
-      transform: scale(1.2);
+      transform: scale(1.15);
     }
     
     .fret-numbers {
-      display: flex;
-      padding-left: 24px;
+      display: grid;
+      grid-template-columns: 28px 40px repeat(15, 1fr);
       margin-top: 8px;
     }
     
     .fret-num {
-      flex: 1;
       text-align: center;
       font-size: 0.7rem;
       color: rgba(255,255,255,0.4);
     }
     
-    .fret-num:first-child { flex: 0.5; }
+    .fret-num:first-child { grid-column: 2; }
     
     .fret-markers {
-      display: flex;
-      padding-left: 24px;
+      display: grid;
+      grid-template-columns: 28px 40px repeat(15, 1fr);
       margin-top: 4px;
     }
     
     .fret-marker-dot {
-      flex: 1;
       display: flex;
       justify-content: center;
     }
     
-    .fret-marker-dot:first-child { flex: 0.5; }
+    .fret-marker-dot:first-child { grid-column: 2; }
     
     .fret-marker-dot span {
       width: 6px;
       height: 6px;
-      background: rgba(255,255,255,0.2);
+      background: rgba(255,255,255,0.3);
       border-radius: 50%;
     }
     
