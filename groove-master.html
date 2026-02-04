@@ -691,7 +691,7 @@
     const NUM_FRETS = 12; // Total fret lines visible
     const HIT_FRET = 2;   // Which fret is the hit zone (0-indexed from left)
     const NOTE_RADIUS = 20;
-    const HIT_WINDOW_MS = 150; // Timing window in milliseconds
+    const HIT_WINDOW_MS = 250; // Timing window in milliseconds
     
     let audioContext, analyser, micStream;
     let lastDetectedNote = null;
@@ -1002,15 +1002,31 @@
       }
       ctx.restore();
       
-      // Subtle hit zone glow
-      ctx.fillStyle = 'rgba(0,150,255,0.06)';
-      ctx.fillRect(HIT_FRET * fretWidth, 0, fretWidth, h);
+      // Hit zone — thick bordered bar matching timing window
+      const barWidth = fretWidth * 1.4;
+      const barLeft = hitLineX - barWidth / 2;
       
-      // Hit line (single vertical bar)
-      ctx.strokeStyle = '#0096ff';
+      // Fill
+      ctx.fillStyle = 'rgba(0,150,255,0.08)';
+      ctx.fillRect(barLeft, 0, barWidth, h);
+      
+      // Thick border edges
+      ctx.strokeStyle = 'rgba(0,150,255,0.6)';
       ctx.lineWidth = 3;
       ctx.shadowColor = '#0096ff';
-      ctx.shadowBlur = 15;
+      ctx.shadowBlur = 12;
+      ctx.beginPath();
+      ctx.moveTo(barLeft, 0);
+      ctx.lineTo(barLeft, h);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(barLeft + barWidth, 0);
+      ctx.lineTo(barLeft + barWidth, h);
+      ctx.stroke();
+      
+      // Center line (thinner)
+      ctx.strokeStyle = 'rgba(0,150,255,0.3)';
+      ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(hitLineX, 0);
       ctx.lineTo(hitLineX, h);
